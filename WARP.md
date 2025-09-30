@@ -62,7 +62,7 @@ High-level architecture and flow
   • /admin/health — server component that aggregates dbHealth(), metrics, and chain.health(); renders StatusCard components
   • Home (/) mirrors health snapshot for quick visibility
 - Build configuration
-  • frontend/next.config.mjs sets turbopack.root = process.cwd() to avoid workspace-root inference warnings when multiple lockfiles exist
+  • frontend/next.config.mjs sets turbopack.root = process.cwd() locally to avoid workspace-root inference warnings; on Vercel it is disabled to align with outputFileTracingRoot
 
 Governance highlights that affect terminal work
 - Versioning and release protocol
