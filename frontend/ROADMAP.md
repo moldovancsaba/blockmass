@@ -1,7 +1,7 @@
 # ROADMAP
 
 <!--VERSION_INFO_START-->
-Current Version: v0.5.0 (synced 2025-09-30T12:02:59.512Z)
+Current Version: v0.6.0 (synced 2025-09-30T14:32:34.836Z)
 <!--VERSION_INFO_END-->
 
 Planning timestamp (UTC): 2025-09-28T08:27:26.000Z

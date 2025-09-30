@@ -112,10 +112,19 @@ export async function getErc20TotalSupply(address, decimals = 18) {
 /**
  * Health summary combining basic liveness checks.
  * Does not throw; always returns { ok, ... } structure.
+ *
+ * Note: Some public RPC providers (e.g., Cloudflare) may rate-limit or reject
+ * closely parallel requests. To improve reliability, we perform calls
+ * sequentially with a tiny delay between them.
  */
+function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
+
 export async function chainHealth() {
   try {
-    const [cid, blk] = await Promise.all([getChainId(), getBlockNumber()]);
+    // Sequential calls to reduce provider rejections like -32046 "Cannot fulfill request"
+    const cid = await getChainId();
+    await sleep(50);
+    const blk = await getBlockNumber();
     const declared = DECLARED_CHAIN_ID ?? null;
     const matchesDeclared = declared ? declared === cid.chainId : null;
 

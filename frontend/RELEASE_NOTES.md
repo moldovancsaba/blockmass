@@ -1,5 +1,12 @@
 # Release Notes
 
+## [v0.6.0] — 2025-09-30T14:32:34.836Z
+✅ Fixed
+- Chain health calls are sequential with a tiny delay to avoid provider errors like Cloudflare RPC “Cannot fulfill request” (-32046)
+
+✅ Notes
+- Public RPCs can be rate-limited or reject parallel calls; this change increases reliability without adding dependencies
+
 ## [v0.5.0] — 2025-09-30T12:02:59.512Z
 ✅ Added
 - Canonicalized DB env to MONGODB_URI with deprecated MONGO_URI fallback in code
