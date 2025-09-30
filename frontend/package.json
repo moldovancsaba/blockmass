@@ -1,0 +1,24 @@
+{
+  "name": "blockmass",
+  "version": "0.5.0",
+  "private": true,
+  "scripts": {
+    "predev": "npm run version:patch",
+    "version:patch": "node scripts/bump-version.mjs patch && node scripts/sync-version.mjs",
+    "version:minor": "node scripts/bump-version.mjs minor && node scripts/sync-version.mjs",
+    "version:major": "node scripts/bump-version.mjs major && node scripts/sync-version.mjs",
+    "setup:env": "node scripts/setup-env.mjs",
+    "dev": "next dev --turbopack",
+    "build": "next build --turbopack",
+    "start": "next start"
+  },
+  "dependencies": {
+    "mongodb": "^6.20.0",
+    "mongoose": "^8.18.2",
+    "next": "15.5.4",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "socket.io": "^4.8.1",
+    "socket.io-client": "^4.8.1"
+  }
+}
