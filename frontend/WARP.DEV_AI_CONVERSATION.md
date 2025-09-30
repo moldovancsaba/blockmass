@@ -94,3 +94,7 @@ Update 2025-09-30T12:02:59.512Z (UTC):
 Update 2025-09-30T14:32:34.836Z (UTC):
 - Chain health updated to sequential JSON-RPC calls with tiny delay to avoid Cloudflare “Cannot fulfill request” (-32046)
 - Version bumped to v0.6.0; release notes updated
+
+Update 2025-09-30T14:49:40.812Z (UTC):
+- Added retry with jittered backoff for transient RPC errors (-32046/-32603/HTTP 429/5xx) in core RPC helper
+- Version bumped to v0.7.0; release notes updated

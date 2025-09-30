@@ -39,8 +39,8 @@ function formatUnits(bi, decimals) {
   return `${neg ? "-" : ""}${whole.toString()}${fracStr ? "." + fracStr : ""}`;
 }
 
-/** JSON-RPC helper with basic timeout. */
-async function rpc(method, params = [], { timeoutMs = 8000 } = {}) {
+/** JSON-RPC core once helper with basic timeout. */
+async function rpcOnce(method, params = [], { timeoutMs = 8000 } = {}) {
   if (!RPC_URL) throw new Error("CHAIN_RPC_URL not set");
   const body = { jsonrpc: "2.0", id: Date.now(), method, params };
 
@@ -53,22 +53,46 @@ async function rpc(method, params = [], { timeoutMs = 8000 } = {}) {
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
       signal: controller.signal,
-      // Force server-side execution on Next.js where applicable
       cache: "no-store",
     });
 
     if (!res.ok) {
       const txt = await res.text().catch(() => "");
-      throw new Error(`RPC HTTP ${res.status} ${res.statusText} ${txt}`);
+      const err = new Error(`RPC HTTP ${res.status} ${res.statusText} ${txt}`);
+      err.httpStatus = res.status;
+      throw err;
     }
     const data = await res.json();
     if (data.error) {
-      throw new Error(`RPC Error ${data.error.code}: ${data.error.message}`);
+      const err = new Error(`RPC Error ${data.error.code}: ${data.error.message}`);
+      err.rpcCode = data.error.code;
+      throw err;
     }
     return data.result;
   } finally {
     clearTimeout(t);
   }
+}
+
+/** JSON-RPC helper with small retry against transient provider errors. */
+async function rpc(method, params = [], { timeoutMs = 8000, attempts = 3 } = {}) {
+  let lastErr;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await rpcOnce(method, params, { timeoutMs });
+    } catch (e) {
+      lastErr = e;
+      const code = e?.rpcCode;
+      const http = e?.httpStatus;
+      const transient = code === -32046 || code === -32603 || http === 429 || (http >= 500 && http < 600);
+      if (!transient || i === attempts - 1) break;
+      // backoff with jitter: 120ms, 200ms, 320ms (+/- 40ms)
+      const base = [120, 200, 320][i] || 320;
+      const jitter = Math.floor(Math.random() * 80) - 40;
+      await new Promise((r) => setTimeout(r, Math.max(80, base + jitter)));
+    }
+  }
+  throw lastErr;
 }
 
 /** Raw eth_call helper. */

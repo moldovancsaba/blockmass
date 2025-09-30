@@ -1,5 +1,10 @@
 # Release Notes
 
+## [v0.7.0] — 2025-09-30T14:49:40.812Z
+✅ Improved
+- JSON-RPC now retries transient provider errors (-32046, -32603, HTTP 429/5xx) with small jittered backoff (120–320ms)
+- Keeps sequential call order in chainHealth to further reduce rejections
+
 ## [v0.6.0] — 2025-09-30T14:32:34.836Z
 ✅ Fixed
 - Chain health calls are sequential with a tiny delay to avoid provider errors like Cloudflare RPC “Cannot fulfill request” (-32046)
