@@ -1,17 +1,42 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
+
+function genId() {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
+  return Math.random().toString(36).slice(2) + Date.now().toString(36);
+}
+
+function getClientId() {
+  try {
+    const key = "bm_client_id";
+    const fromStore = localStorage.getItem(key);
+    if (fromStore) return fromStore;
+    const id = genId();
+    localStorage.setItem(key, id);
+    return id;
+  } catch {
+    return genId();
+  }
+}
 
 export default function Home() {
   const [api, setApi] = useState({ db: null, socket: null });
   const [err, setErr] = useState("");
+  const [ttlActive, setTtlActive] = useState(null);
+  const [ttlLastTs, setTtlLastTs] = useState(null);
+  const [ttlSeconds, setTtlSeconds] = useState(60);
+  const clientIdRef = useRef(null);
 
   useEffect(() => {
     let aborted = false;
     let intervalId;
     let socket;
+    let heartbeatTimer;
 
     async function boot() {
+      clientIdRef.current = getClientId();
+
       // Initial health snapshot
       try {
         const res = await fetch("/admin/health/api");
@@ -35,19 +60,31 @@ export default function Home() {
             },
           }));
         });
-        socket.on("disconnect", () => {
-          if (aborted) return;
-          setApi((prev) => ({
-            ...prev,
-            socket: {
-              connectedClients: Math.max(0, (prev?.socket?.connectedClients ?? 1) - 1),
-              lastEventAt: Date.now(),
-            },
-          }));
+        socket.on("connect_error", () => {
+          // Socket unavailable (e.g., serverless). We'll rely on heartbeat fallback.
         });
       } catch {
-        // Fallback: no realtime updates if socket client fails to load
+        // No realtime available; rely on heartbeat fallback
       }
+
+      // Heartbeat fallback (works on Vercel): ping half-ttl to keep active count fresh
+      async function heartbeatOnce() {
+        try {
+          const res = await fetch("/api/health/heartbeat", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ clientId: clientIdRef.current }),
+          });
+          const json = await res.json();
+          if (json?.ok) {
+            if (!aborted && typeof json.active === "number") setTtlActive(json.active);
+            if (!aborted && typeof json.ttlSeconds === "number") setTtlSeconds(json.ttlSeconds);
+            if (!aborted && json.ts) setTtlLastTs(json.ts);
+          }
+        } catch {}
+      }
+      await heartbeatOnce();
+      heartbeatTimer = setInterval(heartbeatOnce, Math.max(5, Math.floor(ttlSeconds / 2)) * 1000);
 
       // Poll health for DB/system/chain
       intervalId = setInterval(async () => {
@@ -64,11 +101,12 @@ export default function Home() {
     return () => {
       aborted = true;
       if (intervalId) clearInterval(intervalId);
+      if (heartbeatTimer) clearInterval(heartbeatTimer);
       try { if (socket) socket.disconnect(); } catch {}
     };
-  }, []);
+  }, [ttlSeconds]);
 
-  const loading = !api.db || !api.socket;
+  const loading = !api.db; // socket is optional; we have heartbeat fallback
   const dbOk = api.db?.ok === true;
   const socketActive = (api.socket?.connectedClients ?? 0) > 0 || !!api.socket?.lastEventAt;
 
@@ -112,13 +150,15 @@ export default function Home() {
           )}
         </Card>
 
-        <Card title="Socket" tone={socketActive ? "success" : (loading ? "info" : "warning")}>
+        <Card title="Users" tone={(ttlActive ?? 0) > 0 || socketActive ? "success" : (loading ? "info" : "warning")}>
           {loading ? (
             <div>Loading…</div>
           ) : (
             <ul style={{margin:0, paddingLeft:18}}>
-              <li><strong>Active Users:</strong> {api.socket?.connectedClients ?? 0}</li>
-              <li><strong>Last Event:</strong> {api.socket?.lastEventAt ? new Date(api.socket.lastEventAt).toISOString() : "n/a"}</li>
+              <li><strong>Active Users (TTL):</strong> {ttlActive ?? 0}</li>
+              <li><strong>Last Heartbeat:</strong> {ttlLastTs || "n/a"}</li>
+              <li><strong>Active Users (sockets):</strong> {api.socket?.connectedClients ?? 0}</li>
+              <li><strong>Last Socket Event:</strong> {api.socket?.lastEventAt ? new Date(api.socket.lastEventAt).toISOString() : "n/a"}</li>
             </ul>
           )}
         </Card>
