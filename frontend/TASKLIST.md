@@ -1,7 +1,7 @@
 # TASKLIST
 
 <!--VERSION_INFO_START-->
-Current Version: v0.13.0 (synced 2025-10-01T11:16:37.162Z)
+Current Version: v0.15.0 (synced 2025-10-01T11:24:22.673Z)
 <!--VERSION_INFO_END-->
 
 Updated (UTC): 2025-09-28T08:27:26.000Z
@@ -9,12 +9,12 @@ Note: Completed tasks must be moved to RELEASE_NOTES.md with the release entry.
 
 Sorted by priority:
 
-1) Title: Chain read-only endpoints (block/tx/balance)
+1) Title: RPC visibility (pin info in admin UI)
    Owner: AI
-   Expected Delivery: 2025-10-01T16:00:00.000Z
-   Details: Implement GET /api/chain/block|tx|balance with input validation, no-store, provider reuse.
+   Expected Delivery: 2025-10-01T17:00:00.000Z
+   Details: Show usedEndpoint and pin expiration on Chain card subtitle in /admin/health.
 
-2) Title: RPC visibility (pin info in admin UI)
+2) Title: Env guardrails on boot
    Owner: AI
    Expected Delivery: 2025-10-01T17:00:00.000Z
    Details: Show usedEndpoint and pin expiration on Chain card subtitle in /admin/health.

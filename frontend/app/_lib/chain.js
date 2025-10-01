@@ -251,6 +251,7 @@ export async function chainHealth() {
       }
     }
 
+    const pinExpiresAt = PINNED_URL ? new Date(PINNED_AT + PIN_TTL_MS).toISOString() : null;
     return {
       ok: true,
       rpcUrlConfigured: Boolean(RPC_URL),
@@ -266,8 +267,10 @@ export async function chainHealth() {
       usedEndpoint: LAST_USED_ENDPOINT,
       attemptsTotal: LAST_ATTEMPTS_TOTAL,
       lastErrorCode: LAST_ERROR_CODE,
+      pinExpiresAt,
     };
   } catch (e) {
+    const pinExpiresAt = PINNED_URL ? new Date(PINNED_AT + PIN_TTL_MS).toISOString() : null;
     return {
       ok: false,
       error: e.message || "unknown",
@@ -277,6 +280,7 @@ export async function chainHealth() {
       usedEndpoint: LAST_USED_ENDPOINT,
       attemptsTotal: LAST_ATTEMPTS_TOTAL,
       lastErrorCode: LAST_ERROR_CODE,
+      pinExpiresAt,
     };
   }
 }

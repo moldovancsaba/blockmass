@@ -37,6 +37,10 @@ Quick verification endpoints (while dev server is running)
 - UI dashboard: http://localhost:3000/admin/health
 - Public health: curl http://localhost:3000/api/health/public
 - Chain summary: curl http://localhost:3000/api/chain
+- Read-only chain:
+  • curl "http://localhost:3000/api/chain/block?number=latest"
+  • curl "http://localhost:3000/api/chain/tx?hash=0x<64-hex>"
+  • curl "http://localhost:3000/api/chain/balance?address=0x<40-hex>"
 - Admin metrics (requires header):
   • curl -H "X-Admin-Token: <ADMIN_API_TOKEN>" http://localhost:3000/api/health/metrics
 - Heartbeat (POST JSON; returns active count within TTL window):

@@ -1,5 +1,10 @@
 # Release Notes
 
+## [v0.15.0] — 2025-10-01T11:24:22.673Z
+✅ Improved
+- Admin dashboard shows Chain endpoint visibility: usedEndpoint and pin expiration (from provider pinning telemetry).
+- Documentation updated across README, ARCHITECTURE, WARP, LEARNINGS to reflect enriched health payload, new chain endpoints, and GitHub-only deployment policy.
+
 ## [v0.13.0] — 2025-10-01T11:14:13.000Z
 ✅ Added
 - New read-only chain endpoints (no-store, validated):

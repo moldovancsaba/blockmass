@@ -75,6 +75,7 @@ export default async function HealthPage() {
 
       <StatusCard
         title="Chain"
+        note={chain.usedEndpoint ? `Endpoint: ${chain.usedEndpoint} — pin expires: ${chain.pinExpiresAt || 'n/a'}` : undefined}
         items={[
           { label: "OK", value: chain.ok },
           { label: "RPC Configured", value: chain.rpcUrlConfigured },

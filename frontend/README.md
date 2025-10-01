@@ -1,8 +1,8 @@
 # Blockmass
 
 <!--VERSION_BADGE_START-->
-![Version](https://img.shields.io/badge/version-v0.13.0-blue)
-Last synced: 2025-10-01T11:16:37.162Z
+![Version](https://img.shields.io/badge/version-v0.15.0-blue)
+Last synced: 2025-10-01T11:24:22.673Z
 <!--VERSION_BADGE_END-->
 
 Minimal, rule-compliant foundation:
@@ -42,6 +42,26 @@ Security/Compliance:
 - No new dependencies. All chain access remains server-side.
 - Timestamps and docs comply with ISO 8601 UTC with milliseconds.
 
+## Chain read-only endpoints (no-store)
+- GET /api/chain/block?number=latest|0xHEX|DEC — returns block header/fields (validated)
+- GET /api/chain/tx?hash=0x... — returns transaction (validated)
+- GET /api/chain/balance?address=0x... — returns balance in wei and hex (validated)
+
+## Public health payload
+- GET /api/health/public returns:
+  - status: ok | degraded | down (db.ok && chain.ok → ok; one false → degraded; both false → down)
+  - version, appName, ts (ISO 8601 UTC with milliseconds)
+  - db.ok, db.host
+  - activeUsers (TTL, canonical)
+  - chain.ok, chain.chainId, chain.latestBlock, chain.usedEndpoint
+
+## Active Users policy
+- Canonical metric comes from TTL-backed heartbeats in MongoDB (durable and serverless-safe).
+- Socket counters are dev/preview aids; hidden in Production.
+
 ## Deploy
-- Push to GitHub, connect Vercel, add MONGODB_URI, ADMIN_API_TOKEN, and CHAIN_* env in Production/Preview/Development.
-- After deploy, verify /admin/health (Mongo, Users, System, Chain) and /api/chain.
+- Deployments are managed via GitHub. Do not perform Vercel-specific operations or edits; treat vercel.json as legacy.
+- After deploy, verify:
+  - /admin/health (Mongo, Active Users via TTL, System, Chain)
+  - /api/health/public (enriched JSON)
+  - /api/chain and the read-only chain endpoints above.

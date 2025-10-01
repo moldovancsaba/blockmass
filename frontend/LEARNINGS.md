@@ -1,10 +1,14 @@
 # LEARNINGS
 
 <!--VERSION_INFO_START-->
-Current Version: v0.13.0 (synced 2025-10-01T11:16:37.162Z)
+Current Version: v0.15.0 (synced 2025-10-01T11:24:22.673Z)
 <!--VERSION_INFO_END-->
 
 Updated (UTC): 2025-09-27T10:12:29.071Z
+
+- 2025-10-01T11:20:06.000Z — Public health payload enriched (status/version/app/db/TTL users/chain subset); admin routes emit structured logs on token; safe by default.
+- 2025-10-01T11:20:06.000Z — Read-only chain endpoints added (block/tx/balance) with validation and no-store; provider failover/pinning reused; no new deps.
+- 2025-10-01T11:20:06.000Z — Deployment governed via GitHub-only policy; vercel.json treated as legacy; no Vercel ops by AI.
 
 - Process: Repository structure places Next.js app under frontend/. Ensure all file operations and documentation paths reflect this to avoid confusion and miswrites.
 - Dev: Timestamp enforcement — standardized on new Date().toISOString() for scripts and docs to guarantee ISO 8601 with milliseconds (UTC).
