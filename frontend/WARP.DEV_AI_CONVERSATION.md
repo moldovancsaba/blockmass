@@ -108,3 +108,7 @@ Update 2025-10-01T11:10:03.000Z (UTC):
 - Recorded deployment policy in WARP.md: Deploy via GitHub only; no Vercel operations; treat vercel.json as legacy.
 - Reverted vercel.json cron addition accordingly (self-checks would be implemented via GitHub Actions when needed).
 - Continued delivery: enriched public health payload, admin-only structured logs, Socket.io best-effort heartbeat sync; version bumped to v0.11.0.
+
+Update 2025-10-01T12:40:35.000Z (UTC):
+- Plan registered: Off-chain Proof MVP (Phase 1) — record canonical events (time/place/topic/task), compute contentHash (SHA-256), store in Mongo, list in UI, and broadcast new events over Socket.IO. Manual testnet anchoring via operator with admin endpoint to mark status (verify optional via JSON-RPC). Chosen testnet: Sepolia. Server health remains CHAIN_ID=1.
+- Scope: models (Topic/Task/Event/Nonce), utilities (geohash5, canonicalEvent), API (attest/nonce, events, events/list, events/anchor), Socket.IO bootstrap, Dev UI (/dev), docs/task logging. No new external libraries; crypto.randomUUID used for IDs.

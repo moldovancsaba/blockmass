@@ -1,13 +1,60 @@
 # TASKLIST
 
 <!--VERSION_INFO_START-->
-Current Version: v0.18.0 (synced 2025-10-01T12:16:13.410Z)
+Current Version: v0.19.0 (synced 2025-10-01T15:32:17.145Z)
 <!--VERSION_INFO_END-->
 
 Updated (UTC): 2025-09-28T08:27:26.000Z
 Note: Completed tasks must be moved to RELEASE_NOTES.md with the release entry.
 
 Sorted by priority:
+
+- 2025-10-01T12:40:35.000Z — Off-chain Proof MVP tasks added (owner: core). All timelines in UTC with milliseconds.
+
+1) Title: Data models for Off-chain Proof (Topic, Task, Event, Nonce)
+   Owner: core
+   Expected Delivery: 2025-10-01T16:00:00.000Z
+   Details: Implement Mongoose models under app/_models with indexes and timestamps.
+
+2) Title: Utilities: geohash5 and canonical hashing
+   Owner: core
+   Expected Delivery: 2025-10-01T16:30:00.000Z
+   Details: Minimal geohash encoder and canonicalEvent (SHA-256) without external deps.
+
+3) Title: API: POST /api/attest/nonce
+   Owner: core
+   Expected Delivery: 2025-10-01T17:00:00.000Z
+   Details: Issue nonce with 5-minute TTL (Mongo TTL index), crypto.randomUUID IDs.
+
+4) Title: API: POST /api/events (store + broadcast)
+   Owner: core
+   Expected Delivery: 2025-10-01T17:30:00.000Z
+   Details: Validate nonce, compute contentHash, persist Event, mark nonce used, emit event:new over Socket.IO.
+
+5) Title: API: GET /api/events/list
+   Owner: core
+   Expected Delivery: 2025-10-01T18:00:00.000Z
+   Details: Return last 50 events with safe projection.
+
+6) Title: Socket.IO bootstrap route
+   Owner: core
+   Expected Delivery: 2025-10-01T18:15:00.000Z
+   Details: Ensure server instance exposes globalThis._io for cross-route emits.
+
+7) Title: Dev UI page (/dev)
+   Owner: core
+   Expected Delivery: 2025-10-01T18:45:00.000Z
+   Details: Nonce+record flow with geolocation and live updates.
+
+8) Title: Admin endpoint: POST /api/events/anchor
+   Owner: core
+   Expected Delivery: 2025-10-01T19:15:00.000Z
+   Details: Operator posts txHash and usedEndpoint; optional verify (JSON-RPC receipt) to set blockNumber and status.
+
+9) Title: Docs and governance logging
+   Owner: core
+   Expected Delivery: 2025-10-01T19:30:00.000Z
+   Details: Update WARP.DEV_AI_CONVERSATION.md, ROADMAP.md, TASKLIST.md with ISO timestamps.
 
 1) Title: RPC visibility (pin info in admin UI)
    Owner: AI
