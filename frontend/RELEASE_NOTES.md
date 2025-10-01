@@ -1,5 +1,9 @@
 # Release Notes
 
+## [v0.16.0] — 2025-10-01T11:26:12.345Z
+✅ Added
+- Env guardrails: on boot, validate MONGODB_URI, CHAIN_ID, and at least one CHAIN_RPC_URLS; fail fast in Dev; single-line error log in Prod.
+
 ## [v0.15.0] — 2025-10-01T11:24:22.673Z
 ✅ Improved
 - Admin dashboard shows Chain endpoint visibility: usedEndpoint and pin expiration (from provider pinning telemetry).

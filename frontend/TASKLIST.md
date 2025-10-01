@@ -1,7 +1,7 @@
 # TASKLIST
 
 <!--VERSION_INFO_START-->
-Current Version: v0.15.0 (synced 2025-10-01T11:24:22.673Z)
+Current Version: v0.16.0 (synced 2025-10-01T11:26:12.345Z)
 <!--VERSION_INFO_END-->
 
 Updated (UTC): 2025-09-28T08:27:26.000Z
