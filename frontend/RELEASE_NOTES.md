@@ -1,5 +1,13 @@
 # Release Notes
 
+## [v0.13.0] — 2025-10-01T11:14:13.000Z
+✅ Added
+- New read-only chain endpoints (no-store, validated):
+  • GET /api/chain/block?number=latest|0xHEX|DEC — returns block header and fields
+  • GET /api/chain/tx?hash=0x... — returns transaction
+  • GET /api/chain/balance?address=0x... — returns balance (wei, hex)
+- Reused native provider with failover and pinning; no new dependencies.
+
 ## [v0.12.0] — 2025-10-01T11:12:50.201Z
 ✅ Changes
 - Governance: WARP.md updated to record GitHub-only deployment policy (no Vercel ops by AI); vercel.json treated as legacy.
