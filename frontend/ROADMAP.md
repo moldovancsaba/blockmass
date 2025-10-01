@@ -1,7 +1,7 @@
 # ROADMAP
 
 <!--VERSION_INFO_START-->
-Current Version: v0.18.0 (synced 2025-10-01T12:16:13.410Z)
+Current Version: v0.19.0 (synced 2025-10-01T15:32:17.145Z)
 <!--VERSION_INFO_END-->
 
 Planning timestamp (UTC): 2025-09-28T08:27:26.000Z
@@ -13,6 +13,9 @@ Guidelines:
 - Include priorities and dependencies
 
 ## Q4 2025 — Health Dashboard and Foundation
+
+Priority: High
+- Off-chain Proof MVP (Phase 1): canonical event storage with contentHash, UI list, and realtime broadcast; manual Sepolia anchoring via admin endpoint (verification optional). Dependencies: MongoDB, Socket.IO bootstrap route.
 
 Priority: High
 - Chain read-only endpoints: /api/chain/block, /api/chain/tx, /api/chain/balance (no-store; validate inputs; reuse provider)

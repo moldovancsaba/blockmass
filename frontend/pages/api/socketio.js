@@ -46,6 +46,7 @@ export default function handler(req, res) {
       cors: { origin: true, methods: ["GET", "POST"] },
     });
     res.socket.server.io = io;
+    globalThis._io = io;
 
     io.on("connection", (socket) => {
       incClients();
