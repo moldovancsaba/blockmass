@@ -1,5 +1,22 @@
 # Release Notes
 
+## [v0.9.0] — 2025-10-01T09:11:46.081Z
+✅ Maintenance
+- Version alignment for release per protocol (MINOR bump before commit). No code changes since v0.8.1 dev smoke.
+- All docs and env synced; current version references updated across README, ARCHITECTURE, ROADMAP, TASKLIST, LEARNINGS.
+
+✅ Reference
+- See v0.8.0 for the detailed RPC reliability improvements (fallback + serialization) and documentation updates.
+
+## [v0.8.0] — 2025-10-01T08:51:29.976Z
+✅ Improved
+- JSON-RPC reliability hardening: multi-endpoint fallback via CHAIN_RPC_URLS (tries providers on transient errors)
+- Optional request serialization via CHAIN_RPC_SERIALIZE (reduces Cloudflare “Cannot fulfill request” -32046 cases)
+- Maintains sequential call order and jittered backoff for additional stability
+
+✅ Documentation
+- README, ARCHITECTURE, WARP.md, and .env.example updated with CHAIN_RPC_URLS and CHAIN_RPC_SERIALIZE
+
 ## [v0.7.0] — 2025-09-30T14:49:40.812Z
 ✅ Improved
 - JSON-RPC now retries transient provider errors (-32046, -32603, HTTP 429/5xx) with small jittered backoff (120–320ms)

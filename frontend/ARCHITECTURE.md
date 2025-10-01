@@ -1,7 +1,7 @@
 # ARCHITECTURE
 
 <!--VERSION_INFO_START-->
-Current Version: v0.7.0 (synced 2025-09-30T14:49:40.812Z)
+Current Version: v0.9.0 (synced 2025-10-01T09:11:46.081Z)
 <!--VERSION_INFO_END-->
 
 Updated (UTC): 2025-09-28T08:27:26.000Z
@@ -29,5 +29,5 @@ Component Details (role, dependencies, status):
 Notes:
 - Turbopack root is explicitly set in frontend/next.config.mjs to avoid workspace-root inference warnings when multiple lockfiles exist (root and frontend).
 - Global cache is used for Mongoose to avoid multiple connections across hot reloads (resource-preserving in dev/serverless).
-- Chain env keys (server-only): CHAIN_RPC_URL, CHAIN_ID, CHAIN_EXPLORER, optional CHAIN_SAMPLE_ERC20 and CHAIN_SAMPLE_ERC20_DECIMALS. Provider reads process.env directly in server code.
+- Chain env keys (server-only): CHAIN_RPC_URL or CHAIN_RPC_URLS, CHAIN_RPC_SERIALIZE, CHAIN_ID, CHAIN_EXPLORER; optional CHAIN_SAMPLE_ERC20 and CHAIN_SAMPLE_ERC20_DECIMALS. Provider reads process.env directly in server code.
 - All timestamps should be ISO 8601 with milliseconds (UTC) across logs and docs.

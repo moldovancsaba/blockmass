@@ -98,3 +98,8 @@ Update 2025-09-30T14:32:34.836Z (UTC):
 Update 2025-09-30T14:49:40.812Z (UTC):
 - Added retry with jittered backoff for transient RPC errors (-32046/-32603/HTTP 429/5xx) in core RPC helper
 - Version bumped to v0.7.0; release notes updated
+
+Update 2025-09-30T15:00:41.000Z (UTC):
+- Implemented multi-endpoint RPC fallback (CHAIN_RPC_URLS) and optional serialization (CHAIN_RPC_SERIALIZE) in app/_lib/chain.js
+- Updated README, ARCHITECTURE, WARP.md, and .env.example to document new env keys and behaviour
+- Rationale: Cloudflare occasionally returns -32046 "Cannot fulfill request"; fallbacks and single-flight queue improve reliability without adding deps

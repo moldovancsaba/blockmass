@@ -1,7 +1,7 @@
 # LEARNINGS
 
 <!--VERSION_INFO_START-->
-Current Version: v0.7.0 (synced 2025-09-30T14:49:40.812Z)
+Current Version: v0.9.0 (synced 2025-10-01T09:11:46.081Z)
 <!--VERSION_INFO_END-->
 
 Updated (UTC): 2025-09-27T10:12:29.071Z

@@ -27,6 +27,8 @@ Environment (create frontend/.env.local)
 - UI version (auto-managed): NEXT_PUBLIC_APP_VERSION (written by sync script)
 - Chain (server-only):
   • CHAIN_RPC_URL — JSON-RPC HTTPS endpoint (e.g., https://cloudflare-eth.com)
+  • CHAIN_RPC_URLS — optional comma-separated prioritized list of RPC URLs to try on transient errors (first is primary)
+  • CHAIN_RPC_SERIALIZE — optional boolean ("true"/"1") to force serial execution of RPCs; auto-enabled when using cloudflare-eth.com
   • CHAIN_ID — decimal chain id (as string)
   • CHAIN_EXPLORER — base URL for links
   • Optional demo: CHAIN_SAMPLE_ERC20, CHAIN_SAMPLE_ERC20_DECIMALS

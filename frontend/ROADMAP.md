@@ -1,7 +1,7 @@
 # ROADMAP
 
 <!--VERSION_INFO_START-->
-Current Version: v0.7.0 (synced 2025-09-30T14:49:40.812Z)
+Current Version: v0.9.0 (synced 2025-10-01T09:11:46.081Z)
 <!--VERSION_INFO_END-->
 
 Planning timestamp (UTC): 2025-09-28T08:27:26.000Z
@@ -15,6 +15,7 @@ Guidelines:
 ## Q4 2025 — Health Dashboard and Foundation
 
 Priority: High
+- RPC reliability hardening: multi-endpoint fallback (CHAIN_RPC_URLS) and optional serialization (CHAIN_RPC_SERIALIZE) — dependency: env; no new libs
 - Chain integration (read-only) extension: JSON-RPC event sampling and summaries — dependency: CHAIN_* env, Node runtime
 - Health Dashboard live status (Mongo, connections, system, chain) — dependency: MongoDB connection via Mongoose
 - Version automation (predev patch, minor before commit) — dependency: Node scripts

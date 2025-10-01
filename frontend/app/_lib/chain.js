@@ -4,17 +4,48 @@
  * 
  * ENV:
  * - CHAIN_RPC_URL: JSON-RPC HTTPS endpoint (e.g. https://cloudflare-eth.com)
+ * - CHAIN_RPC_URLS: optional comma-separated list of RPC URLs to try on transient errors (first is primary)
+ * - CHAIN_RPC_SERIALIZE: optional boolean ("true"/"1") to force serial execution of all RPC requests; defaults on for cloudflare-eth.com
  * - CHAIN_ID: decimal chain id as string (e.g. "1")
  * - CHAIN_EXPLORER: optional explorer base URL for links
  * - CHAIN_SAMPLE_ERC20: optional ERC20 address for demo read-only calls
  * - CHAIN_SAMPLE_ERC20_DECIMALS: optional decimals for formatting (default 18)
  */
 
-const RPC_URL = process.env.CHAIN_RPC_URL;
+// Read provider URLs: allow CHAIN_RPC_URLS (comma-separated) or single CHAIN_RPC_URL.
+const RPC_URLS = (process.env.CHAIN_RPC_URLS || process.env.CHAIN_RPC_URL || "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+// Keep the first URL for reporting/debugging; legacy name preserved for response shape
+const RPC_URL = RPC_URLS[0];
+
 const DECLARED_CHAIN_ID = process.env.CHAIN_ID ? Number(process.env.CHAIN_ID) : undefined;
 const EXPLORER = process.env.CHAIN_EXPLORER || null;
 const SAMPLE_ERC20 = process.env.CHAIN_SAMPLE_ERC20 || null;
 const SAMPLE_ERC20_DECIMALS = process.env.CHAIN_SAMPLE_ERC20_DECIMALS ? Number(process.env.CHAIN_SAMPLE_ERC20_DECIMALS) : 18;
+
+// Determine whether to serialize RPC calls (single-flight) to avoid provider rejections like -32046 on Cloudflare.
+const SERIALIZE_RPC = (() => {
+  const flag = String(process.env.CHAIN_RPC_SERIALIZE || "").toLowerCase();
+  if (flag === "1" || flag === "true") return true;
+  try {
+    const host = RPC_URL ? new URL(RPC_URL).host : "";
+    return host.includes("cloudflare-eth.com");
+  } catch (_) {
+    return false;
+  }
+})();
+
+// Simple single-flight queue. Why: Some providers reject closely parallel POSTs; queueing improves reliability without deps.
+let rpcQueue = Promise.resolve();
+function runSerialized(task) {
+  const p = rpcQueue.then(task, task);
+  // Keep the queue from rejecting and breaking the chain
+  rpcQueue = p.catch(() => {});
+  return p;
+}
 
 /** Convert hex (0x...) to integer safely. */
 function hexToInt(hex) {
@@ -40,17 +71,21 @@ function formatUnits(bi, decimals) {
 }
 
 /** JSON-RPC core once helper with basic timeout. */
-async function rpcOnce(method, params = [], { timeoutMs = 8000 } = {}) {
-  if (!RPC_URL) throw new Error("CHAIN_RPC_URL not set");
+async function rpcOnceWithUrl(url, method, params = [], { timeoutMs = 8000 } = {}) {
+  if (!url) throw new Error("CHAIN_RPC_URL not set");
   const body = { jsonrpc: "2.0", id: Date.now(), method, params };
 
   const controller = new AbortController();
   const t = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    const res = await fetch(RPC_URL, {
+    const res = await fetch(url, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: {
+        "content-type": "application/json",
+        // Provide a simple UA for providers that behave differently without it
+        "user-agent": "blockmass-jsonrpc/1",
+      },
       body: JSON.stringify(body),
       signal: controller.signal,
       cache: "no-store",
@@ -60,12 +95,14 @@ async function rpcOnce(method, params = [], { timeoutMs = 8000 } = {}) {
       const txt = await res.text().catch(() => "");
       const err = new Error(`RPC HTTP ${res.status} ${res.statusText} ${txt}`);
       err.httpStatus = res.status;
+      err.rpcUrl = url;
       throw err;
     }
     const data = await res.json();
     if (data.error) {
       const err = new Error(`RPC Error ${data.error.code}: ${data.error.message}`);
       err.rpcCode = data.error.code;
+      err.rpcUrl = url;
       throw err;
     }
     return data.result;
@@ -74,25 +111,37 @@ async function rpcOnce(method, params = [], { timeoutMs = 8000 } = {}) {
   }
 }
 
-/** JSON-RPC helper with small retry against transient provider errors. */
-async function rpc(method, params = [], { timeoutMs = 8000, attempts = 3 } = {}) {
+/** JSON-RPC helper with retry and multi-endpoint fallback for transient errors. */
+async function rpcCore(method, params = [], { timeoutMs = 8000, attempts = 3 } = {}) {
+  if (!RPC_URLS.length) throw new Error("CHAIN_RPC_URL not set");
   let lastErr;
-  for (let i = 0; i < attempts; i++) {
-    try {
-      return await rpcOnce(method, params, { timeoutMs });
-    } catch (e) {
-      lastErr = e;
-      const code = e?.rpcCode;
-      const http = e?.httpStatus;
-      const transient = code === -32046 || code === -32603 || http === 429 || (http >= 500 && http < 600);
-      if (!transient || i === attempts - 1) break;
-      // backoff with jitter: 120ms, 200ms, 320ms (+/- 40ms)
-      const base = [120, 200, 320][i] || 320;
-      const jitter = Math.floor(Math.random() * 80) - 40;
-      await new Promise((r) => setTimeout(r, Math.max(80, base + jitter)));
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    for (let idx = 0; idx < RPC_URLS.length; idx++) {
+      const url = RPC_URLS[idx];
+      try {
+        return await rpcOnceWithUrl(url, method, params, { timeoutMs });
+      } catch (e) {
+        lastErr = e;
+        const code = e?.rpcCode;
+        const http = e?.httpStatus;
+        const transient = code === -32046 || code === -32603 || http === 429 || (http >= 500 && http < 600);
+        // If not transient, fail fast
+        if (!transient) throw e;
+        // Otherwise, try next URL in list or next attempt
+      }
     }
+    // backoff with jitter between attempts: ~150ms → ~300ms → ~500ms
+    const bases = [150, 300, 500];
+    const base = bases[attempt] || 500;
+    const jitter = Math.floor(Math.random() * 100) - 50;
+    await new Promise((r) => setTimeout(r, Math.max(100, base + jitter)));
   }
   throw lastErr;
+}
+
+async function rpc(method, params = [], { timeoutMs = 8000, attempts = 3 } = {}) {
+  const exec = () => rpcCore(method, params, { timeoutMs, attempts });
+  return SERIALIZE_RPC ? runSerialized(exec) : exec();
 }
 
 /** Raw eth_call helper. */
@@ -171,6 +220,7 @@ export async function chainHealth() {
     return {
       ok: true,
       rpcUrlConfigured: Boolean(RPC_URL),
+      rpcSerialization: SERIALIZE_RPC,
       chainId: cid.chainId,
       chainIdHex: cid.hex,
       declaredChainId: declared,
@@ -185,6 +235,7 @@ export async function chainHealth() {
       ok: false,
       error: e.message || "unknown",
       rpcUrlConfigured: Boolean(RPC_URL),
+      rpcSerialization: SERIALIZE_RPC,
       declaredChainId: DECLARED_CHAIN_ID ?? null,
     };
   }

@@ -1,8 +1,8 @@
 # Blockmass
 
 <!--VERSION_BADGE_START-->
-![Version](https://img.shields.io/badge/version-v0.7.0-blue)
-Last synced: 2025-09-30T14:49:40.812Z
+![Version](https://img.shields.io/badge/version-v0.9.0-blue)
+Last synced: 2025-10-01T09:11:46.081Z
 <!--VERSION_BADGE_END-->
 
 Minimal, rule-compliant foundation:
@@ -27,6 +27,8 @@ What was added:
 
 Configure (server-only) env in `frontend/.env.local`:
 - `CHAIN_RPC_URL` — JSON-RPC HTTPS endpoint (default: https://cloudflare-eth.com)
+- `CHAIN_RPC_URLS` — optional comma-separated prioritized list of RPC URLs to try on transient errors (first is primary)
+- `CHAIN_RPC_SERIALIZE` — optional boolean ("true"/"1") to force serial execution of RPCs; auto-enabled when using cloudflare-eth.com
 - `CHAIN_ID` — decimal chain id as string (default: "1")
 - `CHAIN_EXPLORER` — optional explorer base URL (default: https://etherscan.io)
 
