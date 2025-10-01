@@ -5,9 +5,5 @@
   ],
   "routes": [
     { "src": "/(.*)", "dest": "frontend/$1" }
-  ],
-  "crons": [
-    { "path": "/api/health/public", "schedule": "0 * * * *" },
-    { "path": "/api/health/public", "schedule": "0 3 * * *" }
   ]
 }

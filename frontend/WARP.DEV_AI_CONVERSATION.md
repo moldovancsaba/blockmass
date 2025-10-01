@@ -103,3 +103,8 @@ Update 2025-09-30T15:00:41.000Z (UTC):
 - Implemented multi-endpoint RPC fallback (CHAIN_RPC_URLS) and optional serialization (CHAIN_RPC_SERIALIZE) in app/_lib/chain.js
 - Updated README, ARCHITECTURE, WARP.md, and .env.example to document new env keys and behaviour
 - Rationale: Cloudflare occasionally returns -32046 "Cannot fulfill request"; fallbacks and single-flight queue improve reliability without adding deps
+
+Update 2025-10-01T11:10:03.000Z (UTC):
+- Recorded deployment policy in WARP.md: Deploy via GitHub only; no Vercel operations; treat vercel.json as legacy.
+- Reverted vercel.json cron addition accordingly (self-checks would be implemented via GitHub Actions when needed).
+- Continued delivery: enriched public health payload, admin-only structured logs, Socket.io best-effort heartbeat sync; version bumped to v0.11.0.

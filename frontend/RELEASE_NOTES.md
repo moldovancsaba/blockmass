@@ -1,5 +1,10 @@
 # Release Notes
 
+## [v0.12.0] — 2025-10-01T11:12:50.201Z
+✅ Changes
+- Governance: WARP.md updated to record GitHub-only deployment policy (no Vercel ops by AI); vercel.json treated as legacy.
+- Reverted earlier cron addition from vercel.json per policy.
+
 ## [v0.11.0] — 2025-10-01T11:06:13.709Z
 ✅ New Features
 - Public health payload enriched: status (ok/degraded/down), version/appName/ts, db.ok/host, canonical activeUsers (TTL), chain.ok/chainId/latestBlock/usedEndpoint; no-store cache.

@@ -1,7 +1,7 @@
 # TASKLIST
 
 <!--VERSION_INFO_START-->
-Current Version: v0.11.0 (synced 2025-10-01T11:06:13.709Z)
+Current Version: v0.12.0 (synced 2025-10-01T11:12:50.201Z)
 <!--VERSION_INFO_END-->
 
 Updated (UTC): 2025-09-28T08:27:26.000Z
@@ -9,7 +9,32 @@ Note: Completed tasks must be moved to RELEASE_NOTES.md with the release entry.
 
 Sorted by priority:
 
-1) Title: Native JSON-RPC provider + Chain health integration
+1) Title: Chain read-only endpoints (block/tx/balance)
+   Owner: AI
+   Expected Delivery: 2025-10-01T16:00:00.000Z
+   Details: Implement GET /api/chain/block|tx|balance with input validation, no-store, provider reuse.
+
+2) Title: RPC visibility (pin info in admin UI)
+   Owner: AI
+   Expected Delivery: 2025-10-01T17:00:00.000Z
+   Details: Show usedEndpoint and pin expiration on Chain card subtitle in /admin/health.
+
+3) Title: Env guardrails on boot
+   Owner: AI
+   Expected Delivery: 2025-10-01T18:00:00.000Z
+   Details: Assert MONGODB_URI, CHAIN_ID, CHAIN_RPC_URLS; fail fast in Dev; warn single line in Prod.
+
+4) Title: Docs update & release planning to v0.12.0
+   Owner: AI
+   Expected Delivery: 2025-10-01T19:00:00.000Z
+   Details: README policy on TTL Active Users; WARP deployment via GitHub; RELEASE_NOTES.md draft for v0.12.0.
+
+5) Title: Admin token boot check (warn-only)
+   Owner: AI
+   Expected Delivery: 2025-10-01T19:30:00.000Z
+   Details: Warn (do not crash) if ADMIN_API_TOKEN missing when admin routes exist.
+
+6) Title: Native JSON-RPC provider + Chain health integration
    Owner: AI
    Expected Delivery: 2025-09-28T12:00:00.000Z
    Details: Add app/_lib/chain.js, /api/chain, and wire dashboard; no new libs.

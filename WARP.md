@@ -67,6 +67,10 @@ High-level architecture and flow
   • frontend/next.config.mjs sets turbopack.root = process.cwd() locally to avoid workspace-root inference warnings; on Vercel it is disabled to align with outputFileTracingRoot
 
 Governance highlights that affect terminal work
+- Deployment policy
+  • Deployments are managed via GitHub. Do not perform any Vercel-specific operations or edits.
+  • Do not add or modify vercel.json without explicit instruction; treat any existing Vercel configuration as legacy.
+  • If scheduled checks are required, use GitHub Actions (scheduled workflows), not Vercel cron.
 - Versioning and release protocol
   • Before dev: patch bump happens automatically (predev)
   • Before commit to GitHub: bump MINOR and reset PATCH to 0 (npm run version:minor), then sync docs and env

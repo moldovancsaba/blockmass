@@ -1,7 +1,7 @@
 # ROADMAP
 
 <!--VERSION_INFO_START-->
-Current Version: v0.11.0 (synced 2025-10-01T11:06:13.709Z)
+Current Version: v0.12.0 (synced 2025-10-01T11:12:50.201Z)
 <!--VERSION_INFO_END-->
 
 Planning timestamp (UTC): 2025-09-28T08:27:26.000Z
@@ -15,10 +15,13 @@ Guidelines:
 ## Q4 2025 — Health Dashboard and Foundation
 
 Priority: High
-- RPC reliability hardening: multi-endpoint fallback (CHAIN_RPC_URLS) and optional serialization (CHAIN_RPC_SERIALIZE) — dependency: env; no new libs
-- Chain integration (read-only) extension: JSON-RPC event sampling and summaries — dependency: CHAIN_* env, Node runtime
-- Health Dashboard live status (Mongo, connections, system, chain) — dependency: MongoDB connection via Mongoose
+- Chain read-only endpoints: /api/chain/block, /api/chain/tx, /api/chain/balance (no-store; validate inputs; reuse provider)
+- RPC visibility: expose pinned usedEndpoint and pin expiration in admin UI
+- Env guardrails: assert MONGODB_URI, CHAIN_ID, and at least one CHAIN_RPC_URLS on boot (clear messages)
 - Version automation (predev patch, minor before commit) — dependency: Node scripts
+
+Deployment Note:
+- Deployments are managed via GitHub. Do not add or modify Vercel config.
 
 Priority: Medium
 - Admin health API endpoints (public/metrics/deep) improvements — dependency: env token protection
