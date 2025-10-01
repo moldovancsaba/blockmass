@@ -3,6 +3,7 @@
 ## [v0.16.0] — 2025-10-01T11:26:12.345Z
 ✅ Added
 - Env guardrails: on boot, validate MONGODB_URI, CHAIN_ID, and at least one CHAIN_RPC_URLS; fail fast in Dev; single-line error log in Prod.
+- Admin token boot check: warn once if ADMIN_API_TOKEN missing; admin metrics will 401 until token is set.
 
 ## [v0.15.0] — 2025-10-01T11:24:22.673Z
 ✅ Improved

@@ -1,8 +1,8 @@
 # Blockmass
 
 <!--VERSION_BADGE_START-->
-![Version](https://img.shields.io/badge/version-v0.16.0-blue)
-Last synced: 2025-10-01T11:26:12.345Z
+![Version](https://img.shields.io/badge/version-v0.17.0-blue)
+Last synced: 2025-10-01T12:07:00.480Z
 <!--VERSION_BADGE_END-->
 
 Minimal, rule-compliant foundation:
@@ -64,4 +64,8 @@ Security/Compliance:
 - After deploy, verify:
   - /admin/health (Mongo, Active Users via TTL, System, Chain)
   - /api/health/public (enriched JSON)
-  - /api/chain and the read-only chain endpoints above.
+- /api/chain and the read-only chain endpoints above.
+
+Admin metrics (requires header):
+- curl -H "X-Admin-Token: <ADMIN_API_TOKEN>" http://localhost:3000/api/health/metrics
+- Note: If ADMIN_API_TOKEN is not set at boot, a single warning is logged; endpoint will 401 until set.

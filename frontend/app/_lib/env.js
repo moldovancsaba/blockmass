@@ -23,7 +23,16 @@ export function bootValidateEnv() {
   if (!process.env.CHAIN_ID) missing.push("CHAIN_ID");
   if (!hasAnyRpcUrl()) missing.push("CHAIN_RPC_URLS");
 
-  if (missing.length === 0) return true;
+  if (missing.length === 0) {
+    // Warn once if ADMIN_API_TOKEN is not set (admin routes will 401)
+    if (!process.env.ADMIN_API_TOKEN && !global.__bm_admin_token_warned__) {
+      global.__bm_admin_token_warned__ = true;
+      log("warn", "admin_token_missing", {
+        hint: "Admin metrics require X-Admin-Token header; set ADMIN_API_TOKEN",
+      });
+    }
+    return true;
+  }
 
   const isProd = process.env.VERCEL_ENV === "production" || process.env.NODE_ENV === "production";
   if (isProd) {
