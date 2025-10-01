@@ -14,6 +14,24 @@ function emitMetrics(io) {
   io.emit("metrics", payload);
 }
 
+function baseUrlFromHeaders(h = {}) {
+  const proto = h["x-forwarded-proto"] || h["X-Forwarded-Proto"] || "http";
+  const host = h["host"] || h["Host"];
+  if (!host) return null;
+  return `${proto}://${host}`;
+}
+
+async function bestEffortHeartbeat(baseUrl, clientId) {
+  if (!baseUrl) return;
+  try {
+    await fetch(`${baseUrl}/api/health/heartbeat`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ clientId, meta: { via: "socketio" } }),
+    });
+  } catch {}
+}
+
 export default function handler(req, res) {
   // Ensure Node runtime and a single Socket.IO server instance per process
   if (!res.socket?.server) {
@@ -34,6 +52,10 @@ export default function handler(req, res) {
       emitMetrics(io);
       socket.emit("ready", { ts: new Date().toISOString() });
 
+      // Best-effort heartbeat sync to keep TTL canonical metric authoritative
+      const base = baseUrlFromHeaders(socket.request?.headers || {});
+      bestEffortHeartbeat(base, `socket:${socket.id}`);
+
       socket.on("join", (room) => {
         if (typeof room === "string" && room.trim()) socket.join(room.trim());
       });
@@ -50,6 +72,7 @@ export default function handler(req, res) {
       socket.on("disconnect", () => {
         decClients();
         emitMetrics(io);
+        bestEffortHeartbeat(base, `socket:${socket.id}`);
       });
     });
   }

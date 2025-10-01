@@ -9,6 +9,7 @@ import HealthPing from "@/app/_models/HealthPing";
 export const runtime = "nodejs";
 
 export async function GET(request) {
+  const start = Date.now();
   if (!isAdminRequest(request)) {
     return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
   }
@@ -20,6 +21,11 @@ export async function GET(request) {
   const windowStart = new Date(Date.now() - BLOCKMASS_HEARTBEAT_TTL_SECONDS * 1000);
   const active = await HealthPing.countDocuments({ lastSeen: { $gte: windowStart } });
 
+  // Optional chain snapshot for logging
+  const ch = await (async () => {
+    try { const c = await (await import("@/app/_lib/chain")).chainHealth(); return c; } catch { return { ok: false }; }
+  })();
+
   const system = {
     uptimeSeconds: uptimeSeconds(),
     nodeVersion: process.version,
@@ -30,5 +36,17 @@ export async function GET(request) {
   };
   const socket = { connectedClients: metrics.socket.connectedClients, lastEventAt: metrics.socket.lastEventAt };
 
-  return NextResponse.json({ ok: true, db, activeUsers: active, socket, system });
+  // Structured admin log
+  log("info", "/api/health/metrics", {
+    durMs: Date.now() - start,
+    dbOk: db.ok,
+    chainOk: ch.ok,
+    activeUsers: active,
+    endpoint: ch.usedEndpoint || null,
+  });
+
+  return NextResponse.json(
+    { ok: true, db, activeUsers: active, socket, system },
+    { headers: { "Cache-Control": "no-store, no-transform" } }
+  );
 }

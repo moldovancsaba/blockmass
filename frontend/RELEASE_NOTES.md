@@ -1,5 +1,18 @@
 # Release Notes
 
+## [v0.11.0] — 2025-10-01T11:06:13.709Z
+✅ New Features
+- Public health payload enriched: status (ok/degraded/down), version/appName/ts, db.ok/host, canonical activeUsers (TTL), chain.ok/chainId/latestBlock/usedEndpoint; no-store cache.
+- Admin-only structured logging for health/admin routes when X-Admin-Token header is present (durMs, dbOk, chainOk, activeUsers, endpoint).
+- Vercel cron self-checks: hourly and daily pings to /api/health/public (vercel.json crons).
+- Socket.io: best-effort heartbeat sync on connect/disconnect to keep TTL metric authoritative.
+
+✅ Changes
+- No secrets logged; public payload remains safe; admin metrics require token.
+
+✅ Notes
+- Socket diagnostics remain dev-only; Production dashboard continues to show TTL Active Users only.
+
 ## [v0.10.0] — 2025-10-01T10:47:13.980Z
 ✅ New Features
 - Chain RPC failover with retries and endpoint pinning (120s TTL) for stable health across public providers.
