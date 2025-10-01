@@ -50,6 +50,7 @@ export default function handler(req, res) {
     io.on("connection", (socket) => {
       incClients();
       emitMetrics(io);
+      io.emit("presence:update", { at: Date.now() });
       socket.emit("ready", { ts: new Date().toISOString() });
 
       // Best-effort heartbeat sync to keep TTL canonical metric authoritative
@@ -72,6 +73,7 @@ export default function handler(req, res) {
       socket.on("disconnect", () => {
         decClients();
         emitMetrics(io);
+        io.emit("presence:update", { at: Date.now() });
         bestEffortHeartbeat(base, `socket:${socket.id}`);
       });
     });

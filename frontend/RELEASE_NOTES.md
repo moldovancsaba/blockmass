@@ -1,5 +1,10 @@
 # Release Notes
 
+## [v0.18.0] — 2025-10-01T12:16:13.410Z
+✅ Improved
+- Public health endpoint: switched ts → timestamp, added admin-only structured log on header; unchanged no-store semantics.
+- Socket.io dev diagnostics: presence:update emitted on connect/disconnect; added DevPresenceBadge client (footer) rendering only in non-Production.
+
 ## [v0.16.0] — 2025-10-01T11:26:12.345Z
 ✅ Added
 - Env guardrails: on boot, validate MONGODB_URI, CHAIN_ID, and at least one CHAIN_RPC_URLS; fail fast in Dev; single-line error log in Prod.

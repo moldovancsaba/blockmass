@@ -3,12 +3,15 @@ import { getEnv } from "@/app/_lib/env";
 import { dbHealth, dbConnect } from "@/app/_lib/db";
 import { chainHealth } from "@/app/_lib/chain";
 import HealthPing from "@/app/_models/HealthPing";
+import { isAdminRequest } from "@/app/_lib/auth";
+import { log } from "@/app/_lib/logger";
 
 export const runtime = "nodejs";
 
-export async function GET() {
+export async function GET(request) {
+  const start = Date.now();
   const { NEXT_PUBLIC_APP_VERSION, NEXT_PUBLIC_APP_NAME, BLOCKMASS_HEARTBEAT_TTL_SECONDS } = getEnv();
-  const ts = new Date().toISOString();
+  const timestamp = new Date().toISOString();
 
   // Gather DB health and canonical Active Users via TTL
   const db = await dbHealth();
@@ -26,9 +29,9 @@ export async function GET() {
 
   const payload = {
     status,
+    timestamp,
     version: NEXT_PUBLIC_APP_VERSION,
     appName: NEXT_PUBLIC_APP_NAME,
-    ts,
     db: { ok: db.ok, host: db.host || null },
     activeUsers,
     chain: {
@@ -38,6 +41,17 @@ export async function GET() {
       usedEndpoint: chain.usedEndpoint ?? null,
     },
   };
+
+  // Structured log only when admin token present
+  if (isAdminRequest(request)) {
+    log("info", "/api/health/public", {
+      durMs: Date.now() - start,
+      dbOk: db.ok,
+      chainOk: chain.ok,
+      activeUsers,
+      endpoint: chain.usedEndpoint || null,
+    });
+  }
 
   return NextResponse.json(payload, {
     headers: { "Cache-Control": "no-store, no-transform" },

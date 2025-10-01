@@ -6,6 +6,7 @@ import HeartbeatPanel from "./HeartbeatPanel";
 import SocketPanel from "./SocketPanel";
 import HealthPing from "@/app/_models/HealthPing";
 import { getEnv } from "@/app/_lib/env";
+import DevPresenceBadge from "@/app/_components/DevPresenceBadge";
 
 /**
  * General Dashboard:
@@ -63,6 +64,9 @@ export default async function HealthPage() {
       {/* Live panels (client) */}
       {!isProd && <SocketPanel />}
       <HeartbeatPanel />
+
+{/* Dev-only presence badge (footer) */}
+      {!isProd && <DevPresenceBadge enabled={true} />}
 
       <StatusCard
         title="System"
