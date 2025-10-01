@@ -46,7 +46,7 @@ Quick verification endpoints (while dev server is running)
 
 High-level architecture and flow
 - Core libs (frontend/app/_lib)
-  • db.js — cached Mongoose connector; accepts MONGO_URI or MONGODB_URI; exports dbHealth() for status
+  • db.js — cached Mongoose connector; reads MONGODB_URI only; exports dbHealth() for status
   • metrics.js — in-memory metrics store with incClients/decClients and uptimeSeconds()
   • chain.js — native JSON-RPC provider (rpc, ethCall, getChainId, getBlockNumber, getBalance, getErc20TotalSupply, health)
   • env.js — centralized env access; exposes validated keys for server and client-safe version

@@ -5,14 +5,11 @@
  */
 export function getEnv() {
   const ttl = parseInt(process.env.BLOCKMASS_HEARTBEAT_TTL_SECONDS || "60", 10);
-  const mongodbUri = process.env.MONGODB_URI || process.env.MONGO_URI || ""; // MONGO_URI is deprecated fallback
-  const mongoDeprecatedFallback = Boolean(!process.env.MONGODB_URI && process.env.MONGO_URI);
+  // What: Canonicalize DB env to MONGODB_URI only.
+  // Why: Prevent ambiguity between multiple keys; aligns local and Vercel.
+  const mongodbUri = process.env.MONGODB_URI || "";
   return {
-    // Canonical key (preferred everywhere in docs):
     MONGODB_URI: mongodbUri,
-    // Deprecated legacy key (exposed only for visibility; avoid using in new code):
-    MONGO_URI: process.env.MONGO_URI || "",
-    MONGO_URI_DEPRECATED_IN_USE: mongoDeprecatedFallback,
 
     ADMIN_API_TOKEN: process.env.ADMIN_API_TOKEN || "",
     BLOCKMASS_HEARTBEAT_TTL_SECONDS: Number.isFinite(ttl) && ttl > 0 ? ttl : 60,

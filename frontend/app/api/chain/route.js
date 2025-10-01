@@ -4,5 +4,9 @@ export const runtime = "nodejs";
 
 export async function GET() {
   const health = await chainHealth();
-  return Response.json(health);
+  return Response.json(health, {
+    headers: {
+      "Cache-Control": "no-store, no-transform",
+    },
+  });
 }

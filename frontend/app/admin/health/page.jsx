@@ -1,21 +1,30 @@
 import StatusCard from "@/app/_components/StatusCard";
-import { dbHealth } from "@/app/_lib/db";
+import { dbHealth, dbConnect } from "@/app/_lib/db";
 import { metrics, uptimeSeconds } from "@/app/_lib/metrics";
 import { chainHealth } from "@/app/_lib/chain";
 import HeartbeatPanel from "./HeartbeatPanel";
 import SocketPanel from "./SocketPanel";
+import HealthPing from "@/app/_models/HealthPing";
+import { getEnv } from "@/app/_lib/env";
 
 /**
  * General Dashboard:
  * - MongoDB connection status
- * - User (socket) status
+ * - User metrics (TTL heartbeat is canonical; sockets are dev aid only)
  * - System metrics
  * - Chain (JSON-RPC) status
  */
 export default async function HealthPage() {
   const [db, chain] = await Promise.all([dbHealth(), chainHealth()]);
-  const socket = { activeUsers: metrics.socket.connectedClients, lastEventAt: metrics.socket.lastEventAt };
   const system = { uptimeSeconds: uptimeSeconds(), appName: metrics.app.name, runtime: "nodejs" };
+
+  // Canonical Active Users via TTL heartbeats (durable across serverless instances)
+  const { BLOCKMASS_HEARTBEAT_TTL_SECONDS } = getEnv();
+  await dbConnect();
+  const windowStart = new Date(Date.now() - BLOCKMASS_HEARTBEAT_TTL_SECONDS * 1000);
+  const activeUsersTtl = await HealthPing.countDocuments({ lastSeen: { $gte: windowStart } });
+
+  const isProd = process.env.VERCEL_ENV === "production" || process.env.NODE_ENV === "production";
 
   return (
     <main style={{maxWidth:820, margin:"40px auto", padding:"0 20px"}}>
@@ -33,15 +42,26 @@ export default async function HealthPage() {
       />
 
       <StatusCard
-        title="Users (Snapshot)"
+        title="Active Users"
         items={[
-          { label: "Active Users (sockets)", value: socket.activeUsers },
-          { label: "Last Socket Event", value: socket.lastEventAt || "n/a" },
+          { label: "Count", value: activeUsersTtl },
+          { label: "Note", value: "calculated via TTL heartbeats" },
         ]}
       />
 
+      {!isProd && (
+        <StatusCard
+          title="Users (Sockets — dev aid)"
+          items={[
+            { label: "Active Users (sockets)", value: metrics.socket.connectedClients },
+            { label: "Last Socket Event", value: metrics.socket.lastEventAt || "n/a" },
+            { label: "Note", value: "ephemeral — serverless counters may vary" },
+          ]}
+        />
+      )}
+
       {/* Live panels (client) */}
-      <SocketPanel />
+      {!isProd && <SocketPanel />}
       <HeartbeatPanel />
 
       <StatusCard
@@ -63,8 +83,9 @@ export default async function HealthPage() {
           { label: "ID Matches Declared", value: chain.chainIdMatchesDeclared ?? "n/a" },
           { label: "Latest Block", value: chain.latestBlock ?? "n/a" },
           { label: "Explorer", value: chain.explorerBaseUrl || "n/a" },
-          { label: "Sample ERC20", value: chain.sampleErc20?.address || "n/a" },
-          { label: "Total Supply (fmt)", value: chain.sampleErc20?.totalSupplyFormatted ?? "n/a" },
+          { label: "Used Endpoint", value: chain.usedEndpoint || "n/a" },
+          { label: "Attempts (last)", value: chain.attemptsTotal ?? 0 },
+          { label: "Last Error Code", value: chain.lastErrorCode || "none" },
           { label: "Error", value: chain.error || chain.sampleErc20?.error || "none" },
         ]}
       />

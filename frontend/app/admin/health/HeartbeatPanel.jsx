@@ -67,7 +67,7 @@ export default function HeartbeatPanel() {
   }, [ttl]);
 
   const items = [
-    { label: "Active Users (live)", value: active ?? "…" },
+    { label: "Active Users (TTL)", value: active ?? "…" },
     { label: "TTL (s)", value: ttl },
     { label: "Last Heartbeat", value: lastTs || "n/a" },
   ];

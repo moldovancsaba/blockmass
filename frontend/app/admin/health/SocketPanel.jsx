@@ -35,6 +35,7 @@ export default function SocketPanel() {
     { label: "Connected", value: connected },
     { label: "Active Users (sockets)", value: count },
     { label: "Last Socket Event", value: lastEventAt || "n/a" },
+    { label: "Note", value: "ephemeral — serverless counters may vary" },
     { label: "Error", value: err || "none" },
   ];
 

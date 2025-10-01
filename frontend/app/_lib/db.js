@@ -10,10 +10,10 @@ if (!cached) cached = global._mongooseConn = { conn: null, promise: null };
 export async function dbConnect() {
   if (cached.conn) return cached.conn;
   if (!cached.promise) {
-    // What: Prefer MONGODB_URI with a temporary fallback to MONGO_URI (deprecated).
-    // Why: Provide compatibility while teams migrate to the canonical key.
-    const uri = process.env.MONGODB_URI || process.env.MONGO_URI;
-    if (!uri) throw new Error("MONGODB_URI not set (MONGO_URI deprecated fallback not found)");
+    // What: Use canonical MONGODB_URI only.
+    // Why: Standardize on a single env key to avoid confusion and silent misconfig across environments.
+    const uri = process.env.MONGODB_URI;
+    if (!uri) throw new Error("MONGODB_URI not set");
     cached.promise = mongoose.connect(uri, { dbName: "blockmass" }).then((m) => m);
   }
   cached.conn = await cached.promise;

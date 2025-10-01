@@ -47,6 +47,24 @@ function runSerialized(task) {
   return p;
 }
 
+// Endpoint pinning to prefer a recently-successful URL for a short window.
+// Why: Reduces cross-provider latency variance and avoids per-request flapping while still failing over on errors.
+const PIN_TTL_MS = 120_000; // 2 minutes
+let PINNED_URL = null;
+let PINNED_AT = 0;
+function isPinFresh() {
+  return PINNED_URL && (Date.now() - PINNED_AT) < PIN_TTL_MS;
+}
+function setPin(url) {
+  PINNED_URL = url;
+  PINNED_AT = Date.now();
+}
+
+// Telemetry for last RPC execution (for health JSON)
+let LAST_USED_ENDPOINT = null;
+let LAST_ATTEMPTS_TOTAL = 0;
+let LAST_ERROR_CODE = null;
+
 /** Convert hex (0x...) to integer safely. */
 function hexToInt(hex) {
   if (typeof hex !== "string" || !hex.startsWith("0x")) return NaN;
@@ -111,30 +129,46 @@ async function rpcOnceWithUrl(url, method, params = [], { timeoutMs = 8000 } = {
   }
 }
 
-/** JSON-RPC helper with retry and multi-endpoint fallback for transient errors. */
+/** JSON-RPC helper with retry and multi-endpoint fallback for transient errors.
+ * Adds lightweight pinning: prefer the last successful endpoint for PIN_TTL_MS.
+ */
 async function rpcCore(method, params = [], { timeoutMs = 8000, attempts = 3 } = {}) {
   if (!RPC_URLS.length) throw new Error("CHAIN_RPC_URL not set");
+
+  // Build tryOrder: pinned first (if fresh), then remaining endpoints in configured order
+  const urls = RPC_URLS.slice();
+  const tryOrder = isPinFresh() ? [PINNED_URL, ...urls.filter((u) => u !== PINNED_URL)] : urls;
+
   let lastErr;
+  LAST_USED_ENDPOINT = null;
+  LAST_ATTEMPTS_TOTAL = 0;
+  LAST_ERROR_CODE = null;
+
   for (let attempt = 0; attempt < attempts; attempt++) {
-    for (let idx = 0; idx < RPC_URLS.length; idx++) {
-      const url = RPC_URLS[idx];
+    for (let idx = 0; idx < tryOrder.length; idx++) {
+      const url = tryOrder[idx];
       try {
-        return await rpcOnceWithUrl(url, method, params, { timeoutMs });
+        const result = await rpcOnceWithUrl(url, method, params, { timeoutMs });
+        LAST_USED_ENDPOINT = url;
+        LAST_ERROR_CODE = null;
+        setPin(url);
+        return result;
       } catch (e) {
         lastErr = e;
+        LAST_ATTEMPTS_TOTAL += 1;
         const code = e?.rpcCode;
         const http = e?.httpStatus;
         const transient = code === -32046 || code === -32603 || http === 429 || (http >= 500 && http < 600);
+        LAST_ERROR_CODE = code ?? http ?? 'unknown';
         // If not transient, fail fast
         if (!transient) throw e;
-        // Otherwise, try next URL in list or next attempt
+        // Otherwise continue to next URL in list
       }
     }
-    // backoff with jitter between attempts: ~150ms → ~300ms → ~500ms
-    const bases = [150, 300, 500];
-    const base = bases[attempt] || 500;
-    const jitter = Math.floor(Math.random() * 100) - 50;
-    await new Promise((r) => setTimeout(r, Math.max(100, base + jitter)));
+    // backoff with jitter between attempts: ~300ms → ~900ms
+    const base = attempt === 0 ? 300 : 900;
+    const jitter = Math.floor(Math.random() * 120);
+    await new Promise((r) => setTimeout(r, base + jitter));
   }
   throw lastErr;
 }
@@ -229,6 +263,9 @@ export async function chainHealth() {
       latestBlockHex: blk.hex,
       explorerBaseUrl: EXPLORER,
       sampleErc20: sample,
+      usedEndpoint: LAST_USED_ENDPOINT,
+      attemptsTotal: LAST_ATTEMPTS_TOTAL,
+      lastErrorCode: LAST_ERROR_CODE,
     };
   } catch (e) {
     return {
@@ -237,6 +274,9 @@ export async function chainHealth() {
       rpcUrlConfigured: Boolean(RPC_URL),
       rpcSerialization: SERIALIZE_RPC,
       declaredChainId: DECLARED_CHAIN_ID ?? null,
+      usedEndpoint: LAST_USED_ENDPOINT,
+      attemptsTotal: LAST_ATTEMPTS_TOTAL,
+      lastErrorCode: LAST_ERROR_CODE,
     };
   }
 }

@@ -1,5 +1,23 @@
 # Release Notes
 
+## [v0.10.0] — 2025-10-01T10:47:13.980Z
+✅ New Features
+- Chain RPC failover with retries and endpoint pinning (120s TTL) for stable health across public providers.
+- Canonical Active Users from MongoDB TTL on dashboard; sockets hidden in Production to avoid confusion.
+- .env.example now canonical with MONGODB_URI, CHAIN_RPC_URLS, and CHAIN_RPC_SERIALIZE.
+
+✅ Changes
+- Standardized on MONGODB_URI; removed legacy fallback.
+- API routes set explicit Node runtime where required and return no-store cache headers.
+- Chain health includes used endpoint and last attempts/error telemetry.
+
+✅ Known Issues
+- Public RPCs can still rate limit during bursts; failover reduces impact but cannot eliminate it.
+
+✅ Future Roadmap
+- Add optional provider API keys for dedicated RPCs (e.g., Infura/Alchemy) to increase reliability.
+- Add event polling with Socket.io broadcasts for on-chain activity.
+
 ## [v0.9.0] — 2025-10-01T09:11:46.081Z
 ✅ Maintenance
 - Version alignment for release per protocol (MINOR bump before commit). No code changes since v0.8.1 dev smoke.
@@ -31,7 +49,7 @@
 
 ## [v0.5.0] — 2025-09-30T12:02:59.512Z
 ✅ Added
-- Canonicalized DB env to MONGODB_URI with deprecated MONGO_URI fallback in code
+- Canonicalized DB env to MONGODB_URI; removed legacy fallback in code
 - Real-time Socket.IO server (pages/api/socketio.js) with singleton init; live metrics broadcast
 - Live socket panels on Home and /admin/health; kept heartbeat TTL panel for durable active count
 
@@ -81,7 +99,7 @@
 - JSX parse error in admin health page (prop array syntax)
 - Turbopack workspace root warning handled via explicit root in next.config.mjs
 - Duplicate homepage route (removed app/page.js)
-- Env mismatch: accept both MONGO_URI and MONGODB_URI
+- Env mismatch: temporarily accepted both Mongo env keys to ease migration
 - Suppressed npm funding prompt via .npmrc (project-scoped)
 
 ✅ Security/Compliance

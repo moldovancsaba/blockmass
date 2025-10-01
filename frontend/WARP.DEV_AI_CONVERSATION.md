@@ -11,7 +11,7 @@ Plan Recorded:
 - Created governance docs: ROADMAP.md, TASKLIST.md, ARCHITECTURE.md, LEARNINGS.md
 
 Dependencies and Considerations:
-- MONGO_URI required in .env.local
+- MONGODB_URI required in .env.local
 - Version sync writes NEXT_PUBLIC_APP_VERSION (UI-safe) to .env.local
 - No tests per policy; no breadcrumbs in UI
 
@@ -36,7 +36,7 @@ Update 2025-09-27T10:41:02.404Z (UTC):
 - Logged learnings and rationale; no dependencies added
 
 Update 2025-09-27T10:46:40.975Z (UTC):
-- Fixed MongoDB env var mismatch by supporting both MONGO_URI and MONGODB_URI in db connector
+- Fixed MongoDB env var mismatch by supporting both Mongo env keys (legacy + MONGODB_URI) in db connector
 - Improved homepage socket metrics to connect first and poll health periodically so counts update
 - Scaffolded env example (includes both keys) and confirmed setup script behaviour
 - No secrets exposed in outputs; .env.local remains local-only
@@ -78,7 +78,7 @@ Update 2025-09-30T08:44:31.085Z (UTC):
 - ROADMAP and TASKLIST updated to include WARP onboarding maintenance
 
 Update 2025-09-30T11:16:01.000Z (UTC):
-- Standardized DB env to MONGODB_URI (removed MONGO_URI fallback); updated db.js and all docs/examples
+- Standardized DB env to MONGODB_URI (removed legacy fallback); updated db.js and all docs/examples
 - Removed duplicate app/page.js (kept app/page.jsx) to avoid default route collision
 - Implemented real Socket.IO server as a singleton in pages/api/socketio.js (Node runtime), with metrics broadcasts
 - Updated homepage (app/page.jsx) to consume real-time metrics via socket.io-client

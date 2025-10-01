@@ -6,5 +6,8 @@ export const runtime = "nodejs";
 export async function GET() {
   const { NEXT_PUBLIC_APP_VERSION } = getEnv();
   const ts = new Date().toISOString();
-  return NextResponse.json({ status: "ok", ts, version: NEXT_PUBLIC_APP_VERSION });
+  return NextResponse.json(
+    { status: "ok", ts, version: NEXT_PUBLIC_APP_VERSION },
+    { headers: { "Cache-Control": "no-store, no-transform" } }
+  );
 }
