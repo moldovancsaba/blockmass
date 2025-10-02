@@ -231,11 +231,21 @@ function triangleIntersectsBbox(
   bbox: turf.helpers.Feature<turf.helpers.Polygon>
 ): boolean {
   // Check for intersection or containment
-  return (
-    turf.booleanIntersects(triangle, bbox) ||
-    turf.booleanContains(bbox, triangle) ||
-    turf.booleanContains(triangle, bbox)
-  );
+  // Use booleanOverlap and booleanWithin for compatibility
+  try {
+    return (
+      turf.booleanOverlap(triangle, bbox) ||
+      turf.booleanWithin(triangle, bbox) ||
+      turf.booleanWithin(bbox, triangle)
+    );
+  } catch {
+    // Fallback: check if any vertex of triangle is in bbox
+    const triCoords = triangle.geometry.coordinates[0];
+    return triCoords.some(coord => {
+      const pt = turf.point(coord);
+      return turf.booleanPointInPolygon(pt, bbox);
+    });
+  }
 }
 
 /**
@@ -356,7 +366,11 @@ export function trianglesAlongPath(
   const line = turf.greatCircle(turf.point(start), turf.point(end));
 
   // Sample points along the line
-  const length = turf.length(line, { units: 'meters' });
+  const lineFeature = Array.isArray(line.geometry.coordinates[0][0])
+    ? turf.lineString(line.geometry.coordinates[0] as any)
+    : line as any;
+  
+  const length = turf.length(lineFeature, { units: 'meters' });
   const stepSize = Math.max(1000, length / 100); // Sample every 1km or 1% of length
 
   const triangles: TriangleId[] = [];
@@ -364,7 +378,7 @@ export function trianglesAlongPath(
 
   // Sample points and find triangles
   for (let dist = 0; dist <= length; dist += stepSize) {
-    const point = turf.along(line, dist, { units: 'meters' });
+    const point = turf.along(lineFeature, dist, { units: 'meters' });
     const [lon, lat] = point.geometry.coordinates;
 
     const triangleId = pointToTriangle(lat, lon, level);
