@@ -1,7 +1,7 @@
 # ROADMAP
 
 <!--VERSION_INFO_START-->
-Current Version: v0.19.0 (synced 2025-10-01T15:32:17.145Z)
+Current Version: v0.20.0 (synced 2025-10-02T10:45:20.584Z)
 <!--VERSION_INFO_END-->
 
 Planning timestamp (UTC): 2025-09-28T08:27:26.000Z
@@ -16,6 +16,7 @@ Guidelines:
 
 Priority: High
 - Off-chain Proof MVP (Phase 1): canonical event storage with contentHash, UI list, and realtime broadcast; manual Sepolia anchoring via admin endpoint (verification optional). Dependencies: MongoDB, Socket.IO bootstrap route.
+- Manual Anchoring (Phase 2): Add simulation endpoint (/api/anchor/run) to mark queued events as sent; prepare contract deployment on Sepolia (BlockmassAnchor) and plan to switch to real tx calls post-deploy. Env: ANCHOR_CONTRACT_ADDRESS (set after deploy).
 
 Priority: High
 - Chain read-only endpoints: /api/chain/block, /api/chain/tx, /api/chain/balance (no-store; validate inputs; reuse provider)

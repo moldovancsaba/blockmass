@@ -1,5 +1,26 @@
 # Release Notes
 
+## [v0.20.0] — 2025-10-02T10:46:06.892Z
+✅ New
+- Off-chain proof MVP (Phase 1): canonical event hashing, nonce issuance, geo bucketing (geohash5), event storage with contentHash, and real-time Socket.IO broadcast.
+- Event list API (GET /api/events/list) and Dev capture page (/dev) for manual testing.
+- Admin-only manual anchor runner (POST /api/anchor/run) — simulation mode to exercise the anchoring pipeline and mark queued events as sent.
+- Mongoose models: Topic, Task, Event, Nonce with TTL indexes and canonical hashing utilities (SHA-256).
+
+✅ Changes
+- No new libraries added. All logic in Next.js, MongoDB/Mongoose, and Socket.IO.
+- Event schema includes anchor subdocument with status (queued/sent/confirmed/failed/skipped), txHash, blockNumber, usedEndpoint.
+- Timestamps comply with ISO 8601 UTC with milliseconds across docs and APIs.
+
+✅ Known Issues
+- On-chain anchoring is simulated. Real transaction flow will be added after BlockmassAnchor contract deployment on Sepolia and signing method is agreed.
+
+✅ Future Roadmap
+- Add real contract address (ANCHOR_CONTRACT_ADDRESS) and raw transaction sender for Sepolia.
+- Optional: batch events into Merkle roots for cheaper anchoring.
+- Optional: add venue QR flow to strengthen geolocation proof.
+- Add Task detail page with event history and geohash5 map preview.
+
 ## [v0.18.0] — 2025-10-01T12:16:13.410Z
 ✅ Improved
 - Public health endpoint: switched ts → timestamp, added admin-only structured log on header; unchanged no-store semantics.
