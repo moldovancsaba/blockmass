@@ -1,7 +1,7 @@
 # ARCHITECTURE
 
 <!--VERSION_INFO_START-->
-Current Version: v0.21.0 (synced 2025-10-02T11:57:54.989Z)
+Current Version: v0.21.2 (synced 2025-10-02T12:16:11.774Z)
 <!--VERSION_INFO_END-->
 
 Updated (UTC): 2025-09-28T08:27:26.000Z

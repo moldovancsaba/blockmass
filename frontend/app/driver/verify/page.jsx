@@ -186,7 +186,7 @@ export default function DriverVerify() {
           Select Target Location
         </label>
         <select
-          value={selectedLocation?.id || ""}
+          value={selectedLocation?.id.toString() || ""}
           onChange={(e) => {
             const loc = config.locations.find((l) => l.id.toString() === e.target.value);
             setSelectedLocation(loc || null);
@@ -225,6 +225,7 @@ export default function DriverVerify() {
               cursor: busy ? "not-allowed" : "pointer",
               fontSize: 14,
               marginRight: 12,
+              opacity: busy ? 0.5 : 1,
             }}
           >
             {nonce ? "✓ Nonce Ready" : "Get Nonce"}
@@ -241,6 +242,7 @@ export default function DriverVerify() {
               cursor: !nonce || busy ? "not-allowed" : "pointer",
               fontSize: 14,
               fontWeight: 700,
+              opacity: !nonce || busy ? 0.5 : 1,
             }}
           >
             {busy ? "Capturing..." : "Capture & Verify"}
