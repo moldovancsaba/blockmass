@@ -115,3 +115,25 @@ Update 2025-10-01T12:40:35.000Z (UTC):
 
 Update 2025-10-02T10:36:25.000Z (UTC):
 - Phase 2 plan: Manual anchoring (testnet) with no keys on Vercel. Added admin-only simulation endpoint POST /api/anchor/run that marks queued events as sent. Contract to be deployed by operator on Sepolia (BlockmassAnchor), then ANCHOR_CONTRACT_ADDRESS will be added to env. Later, the route will call the contract via raw tx.
+
+Update 2025-10-02T14:10:00.000Z (UTC):
+- **MAJOR STRATEGIC PIVOT APPROVED:** Transitioning from Ethereum-based anchoring to building custom STEP Blockchain Protocol
+- Vision: Proof-of-Location-Click (PoLC) consensus mechanism with icosahedron mesh system covering Earth in 2.8 trillion triangles
+- Architecture decisions finalized:
+  - Custom blockchain (NOT Ethereum/Substrate/Cosmos)
+  - Node.js + TypeScript + MongoDB core
+  - Progressive decentralization: Centralized MVP → Hybrid → Full P2P
+  - Mobile-first mining via React Native with GPS + sensor fusion
+  - Fixed supply: 7.7 trillion STEP tokens distributed over 10-20 years
+- Technology stack approved:
+  - Backend: Node.js, MongoDB, Turf.js (geospatial), @noble/secp256k1 (crypto), libp2p (P2P)
+  - Mobile: React Native, Mapbox GL
+  - Explorer: Transform blockmass → step-explorer (Next.js + Mapbox)
+- Timeline: 18-24 months to mainnet (5 phases)
+- Documentation created:
+  - BLOCKCHAIN_PROTOCOL.md — Complete technical specification (consensus, P2P, security)
+  - STEP_TOKENOMICS.md — Mathematical token distribution model with proofs
+- Next actions:
+  - Phase 1 (Months 1-4): Build icosahedron mesh engine + MongoDB storage + explorer visualization
+  - Immediate: Update ROADMAP.md and TASKLIST.md with phased plan
+- Rationale: Product owner's long-term vision (since 2016) requires independent, free, permissionless blockchain purpose-built for location proofs. Ethereum/existing chains cannot support this novel consensus mechanism or economic model.
