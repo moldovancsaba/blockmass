@@ -112,3 +112,6 @@ Update 2025-10-01T11:10:03.000Z (UTC):
 Update 2025-10-01T12:40:35.000Z (UTC):
 - Plan registered: Off-chain Proof MVP (Phase 1) — record canonical events (time/place/topic/task), compute contentHash (SHA-256), store in Mongo, list in UI, and broadcast new events over Socket.IO. Manual testnet anchoring via operator with admin endpoint to mark status (verify optional via JSON-RPC). Chosen testnet: Sepolia. Server health remains CHAIN_ID=1.
 - Scope: models (Topic/Task/Event/Nonce), utilities (geohash5, canonicalEvent), API (attest/nonce, events, events/list, events/anchor), Socket.IO bootstrap, Dev UI (/dev), docs/task logging. No new external libraries; crypto.randomUUID used for IDs.
+
+Update 2025-10-02T10:36:25.000Z (UTC):
+- Phase 2 plan: Manual anchoring (testnet) with no keys on Vercel. Added admin-only simulation endpoint POST /api/anchor/run that marks queued events as sent. Contract to be deployed by operator on Sepolia (BlockmassAnchor), then ANCHOR_CONTRACT_ADDRESS will be added to env. Later, the route will call the contract via raw tx.

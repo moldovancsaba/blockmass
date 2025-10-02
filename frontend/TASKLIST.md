@@ -1,13 +1,35 @@
 # TASKLIST
 
 <!--VERSION_INFO_START-->
-Current Version: v0.19.0 (synced 2025-10-01T15:32:17.145Z)
+Current Version: v0.20.0 (synced 2025-10-02T10:45:20.584Z)
 <!--VERSION_INFO_END-->
 
 Updated (UTC): 2025-09-28T08:27:26.000Z
 Note: Completed tasks must be moved to RELEASE_NOTES.md with the release entry.
 
 Sorted by priority:
+
+- 2025-10-02T10:36:25.000Z — Phase 2 (Manual Anchoring) tasks added.
+
+A) Title: Admin simulation endpoint for anchoring (/api/anchor/run)
+   Owner: core
+   Expected Delivery: 2025-10-02T12:00:00.000Z
+   Details: Mark queued events as sent; protect with X-Admin-Token; no keys on Vercel.
+
+B) Title: Deploy BlockmassAnchor (Sepolia)
+   Owner: operator
+   Expected Delivery: 2025-10-03T12:00:00.000Z
+   Details: Compile and deploy; record ANCHOR_CONTRACT_ADDRESS; no hot keys in server.
+
+C) Title: Configure env ANCHOR_CONTRACT_ADDRESS (Vercel)
+   Owner: operator
+   Expected Delivery: 2025-10-03T15:00:00.000Z
+   Details: Add contract address to env after deploy; no commits with secrets.
+
+D) Title: Switch /api/anchor/run to real tx send
+   Owner: core
+   Expected Delivery: 2025-10-04T12:00:00.000Z
+   Details: Use provider and a safe signing method (manual or external) to call BlockmassAnchor.anchor when ready.
 
 - 2025-10-01T12:40:35.000Z — Off-chain Proof MVP tasks added (owner: core). All timelines in UTC with milliseconds.
 
