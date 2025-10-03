@@ -212,13 +212,22 @@ export interface ITriangleEvent extends Document {
   triangleId: string; // Triangle ID (STEP-TRI-v1:...)
   eventType: 'create' | 'click' | 'subdivide' | 'state_change';
   timestamp: Date; // ISO 8601 UTC with ms
+  
+  // Replay protection fields (Phase 2)
+  account?: string; // Wallet address (for 'click' events)
+  nonce?: string; // Client-provided nonce (for 'click' events)
+  signature?: string; // Proof signature (for 'click' events)
 
   // Event-specific payload
   payload: {
     // For 'click' events
-    minerAddress?: string; // Wallet address
+    minerAddress?: string; // Wallet address (deprecated, use account)
     reward?: string; // Token amount (as string to preserve precision)
     clickNumber?: number; // 1-28
+    lat?: number; // GPS latitude
+    lon?: number; // GPS longitude
+    accuracy?: number; // GPS accuracy in meters
+    speed?: number; // Speed in m/s (computed from prev event)
 
     // For 'subdivide' events
     childrenIds?: string[]; // Array of 4 child IDs
@@ -258,6 +267,21 @@ const triangleEventSchema = new Schema<ITriangleEvent>(
       type: Date,
       required: true,
     },
+    // Phase 2: Replay protection fields
+    account: {
+      type: String,
+      required: false, // Only required for 'click' events
+      index: true,
+    },
+    nonce: {
+      type: String,
+      required: false, // Only required for 'click' events
+      index: true,
+    },
+    signature: {
+      type: String,
+      required: false, // Only required for 'click' events
+    },
     payload: {
       type: Schema.Types.Mixed,
       required: true,
@@ -276,10 +300,27 @@ const triangleEventSchema = new Schema<ITriangleEvent>(
  * 1. Get all events for a triangle (triangleId)
  * 2. Get recent events (timestamp DESC)
  * 3. Get events by type (eventType + timestamp)
+ * 4. Prevent nonce replay (account + nonce) - UNIQUE INDEX
+ * 5. Get last proof for account (account + timestamp)
  */
 triangleEventSchema.index({ triangleId: 1, timestamp: -1 });
 triangleEventSchema.index({ eventType: 1, timestamp: -1 });
 triangleEventSchema.index({ timestamp: -1 }); // For recent events
+
+// Phase 2: Replay protection - compound unique index on (account, nonce)
+// This prevents double-spend attacks at the database level
+// Why sparse: Only 'click' events have nonce; other events don't need this constraint
+triangleEventSchema.index(
+  { account: 1, nonce: 1 },
+  { 
+    unique: true,
+    sparse: true, // Only index documents where both account and nonce exist
+    name: 'account_nonce_unique',
+  }
+);
+
+// Index for finding last proof by account (for speed/moratorium checks)
+triangleEventSchema.index({ account: 1, timestamp: -1 });
 
 /**
  * Triangle event model.

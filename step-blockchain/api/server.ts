@@ -15,10 +15,12 @@
  */
 
 import express from 'express';
-import meshRouter from './mesh.js';
+import { connectToDb, dbHealth } from '../core/db.js';
+import meshRouter from './mesh-simple.js';
+import proofRouter from './proof.js';
 
 const app = express();
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 3002;
 const NODE_ENV = process.env.NODE_ENV || 'development';
 
 /**
@@ -57,14 +59,17 @@ app.use((req, res, next) => {
 /**
  * Health check endpoint
  * 
- * Returns server status and version.
+ * Returns server status, version, and database health.
  */
-app.get('/health', (req, res) => {
+app.get('/health', async (req, res) => {
+  const health = await dbHealth();
+  
   res.json({
     ok: true,
     service: 'step-mesh-api',
     version: '0.1.0',
     environment: NODE_ENV,
+    database: health,
     timestamp: new Date().toISOString(),
   });
 });
@@ -91,6 +96,10 @@ app.get('/', (req, res) => {
         info: 'GET /mesh/info/:triangleId',
         stats: 'GET /mesh/stats?level={level}',
       },
+      proof: {
+        submit: 'POST /proof/submit',
+        status: 'GET /proof/status/:proofId',
+      },
     },
   });
 });
@@ -99,6 +108,11 @@ app.get('/', (req, res) => {
  * Mount mesh API router
  */
 app.use('/mesh', meshRouter);
+
+/**
+ * Mount proof validation API router
+ */
+app.use('/proof', proofRouter);
 
 /**
  * 404 handler
@@ -132,9 +146,19 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 
 /**
  * Start server
+ * 
+ * Initializes MongoDB connection, then starts HTTP server.
  */
-app.listen(PORT, () => {
-  console.log(`
+async function startServer() {
+  try {
+    // Initialize MongoDB connection
+    console.log(`[${new Date().toISOString()}] Connecting to MongoDB...`);
+    await connectToDb();
+    console.log(`[${new Date().toISOString()}] MongoDB connected successfully`);
+    
+    // Start HTTP server
+    app.listen(PORT, () => {
+      console.log(`
 ┌─────────────────────────────────────────────┐
 │  STEP Mesh API Server                       │
 ├─────────────────────────────────────────────┤
@@ -148,10 +172,18 @@ API endpoints:
   → http://localhost:${PORT}/
   → http://localhost:${PORT}/health
   → http://localhost:${PORT}/mesh/triangleAt?lat=47.4979&lon=19.0402&level=10
-  → http://localhost:${PORT}/mesh/stats
+  → http://localhost:${PORT}/proof/submit (POST)
+  → http://localhost:${PORT}/proof/config
 
 Press Ctrl+C to stop.
-  `.trim());
-});
+      `.trim());
+    });
+  } catch (error) {
+    console.error(`[${new Date().toISOString()}] Failed to start server:`, error);
+    process.exit(1);
+  }
+}
+
+startServer();
 
 export default app;

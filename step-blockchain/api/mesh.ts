@@ -310,6 +310,7 @@ router.get('/parent/:triangleId', (req: Request, res: Response) => {
  * - bbox: Bounding box as "west,south,east,north" (comma-separated)
  * - level: Target subdivision level (1-21)
  * - maxResults: Maximum number of triangles to return (default: 1000, max: 10000)
+ * - includePolygon: If 'true', include full polygon GeoJSON (default: false, only centroids)
  * 
  * Response:
  * {
@@ -319,7 +320,7 @@ router.get('/parent/:triangleId', (req: Request, res: Response) => {
  *     "level": 10,
  *     "count": 42,
  *     "triangles": [
- *       { "triangleId": "STEP-TRI-v1:...", "centroid": {...} },
+ *       { "triangleId": "STEP-TRI-v1:...", "centroid": {...}, "polygon": {...} },
  *       ...
  *     ]
  *   }
@@ -327,7 +328,7 @@ router.get('/parent/:triangleId', (req: Request, res: Response) => {
  */
 router.get('/search', (req: Request, res: Response) => {
   try {
-    const { bbox, level, maxResults } = req.query;
+    const { bbox, level, maxResults, includePolygon } = req.query;
 
     // Validate inputs
     if (!bbox || !level) {
@@ -363,11 +364,20 @@ router.get('/search', (req: Request, res: Response) => {
       maxResultsNum
     );
 
-    // Encode and get centroids
-    const triangles = triangleIds.map((id) => ({
-      triangleId: encodeTriangleId(id),
-      centroid: triangleIdToCentroid(id),
-    }));
+    // Encode and get centroids (and optionally polygons)
+    const triangles = triangleIds.map((id) => {
+      const result: any = {
+        triangleId: encodeTriangleId(id),
+        centroid: triangleIdToCentroid(id),
+      };
+      
+      // Include polygon if requested
+      if (includePolygon === 'true') {
+        result.polygon = triangleIdToPolygon(id);
+      }
+      
+      return result;
+    });
 
     res.json(
       successResponse({
