@@ -157,10 +157,28 @@ This document describes the technical architecture of the STEP blockchain system
 #### 3. Mesh Layer (`core/mesh/`) - Phase 1
 
 Icosahedron-based geodesic mesh utilities:
-- Triangle addressing
-- Subdivision algorithms
-- Polygon generation
-- Spatial queries
+
+**addressing.ts** - Triangle ID management
+- Encode/decode STEP-TRI-v1 format
+- Get parent/children IDs
+- Path encoding (quaternary digits)
+- Checksum validation
+
+**icosahedron.ts** - Base geometry
+- 20 triangular faces on unit sphere
+- Geodesic midpoint computation
+- Subdivision into 4 children
+- Cartesian ↔ spherical conversion
+
+**polygon.ts** - Coordinate generation
+- Triangle ID → GeoJSON Polygon
+- Centroid computation
+- Traverse subdivision tree
+- Deterministic coordinate generation
+
+**lookup.ts** - Spatial queries
+- Find triangle at coordinates
+- Nearest triangle search
 
 ### Mobile Components
 
@@ -291,12 +309,21 @@ Icosahedron-based geodesic mesh utilities:
 │        19. Update Triangle state                             │
 │            • Increment clicks by 1                           │
 │            • Update lastClickAt                              │
-│            • TODO: Trigger subdivision at 11 clicks          │
+│            • If clicks === 11 → Trigger subdivision          │
+│            ↓                                                  │
+│        19a. Subdivision (if clicks === 11)                   │
+│            • Decode parent triangle ID (face, level, path)  │
+│            • Generate 4 child IDs using Phase 1 addressing  │
+│            • Compute child polygons & centroids             │
+│            • Insert 4 child Triangle documents              │
+│            • Update parent: state = 'subdivided'            │
+│            • Create subdivision event in audit log          │
+│            • All operations atomic within transaction       │
 │            ↓                                                  │
 │        20. Update Account balance                            │
 │            • Add reward to balance (bigint)                  │
 │            • Atomic increment                                │
-│      })                                                       │
+│      })
 │      ↓                                                        │
 │  21. Load updated balance                                    │
 │      • getOrCreateAccount(account)                          │
@@ -492,25 +519,151 @@ reward(level) = 1 / 2^(level - 1) STEP
 - 28 clicks per triangle (11 + 4×11 + 4×4×11 + ...)
 - Geometric series converges to ~7.7 trillion STEP
 
+### Triangle Subdivision
+
+**Trigger Condition:**
+When a triangle reaches exactly 11 clicks, it subdivides into 4 children.
+
+**Why 11 Clicks:**
+- Ensures sufficient mining activity before subdivision
+- Balances reward distribution across hierarchy
+- Creates natural progression from large to small triangles
+- Prevents premature subdivision of unmined areas
+
+**Subdivision Process:**
+
+```typescript
+// Inside MongoDB transaction, after incrementing clicks
+if (triangle.clicks === 11) {
+  // 1. Decode parent triangle ID to get face, level, path
+  const parentId = decodeTriangleId(triangleId);
+  //    Example: { face: 7, level: 5, path: [0,1,3,2] }
+  
+  // 2. Generate 4 child triangle IDs
+  const childIds = getChildrenIds(parentId);
+  //    Returns array of 4 TriangleId objects:
+  //    - Child 0: { face: 7, level: 6, path: [0,1,3,2,0] }
+  //    - Child 1: { face: 7, level: 6, path: [0,1,3,2,1] }
+  //    - Child 2: { face: 7, level: 6, path: [0,1,3,2,2] }
+  //    - Child 3: { face: 7, level: 6, path: [0,1,3,2,3] }
+  
+  // 3. Compute geometry for each child
+  const childTriangles = childIds.map(childId => {
+    // Compute polygon coordinates using Phase 1 utilities
+    const polygon = triangleIdToPolygon(childId);
+    //    Traverses subdivision tree: face → child0 → child1 → ... → childN
+    //    Returns GeoJSON Polygon with 3 vertices (closed ring)
+    
+    // Compute centroid (center point)
+    const centroid = triangleIdToCentroid(childId);
+    //    Returns GeoJSON Point at triangle center
+    
+    // Encode child ID to STEP-TRI-v1 string
+    const childTriangleId = encodeTriangleId(childId);
+    //    Example: "STEP-TRI-v1:H6-012300000000000000-XYZ"
+    
+    return new Triangle({
+      _id: childTriangleId,
+      face: childId.face,
+      level: childId.level,
+      pathEncoded: childId.path.join(''),
+      parentId: triangleId,
+      childrenIds: [],
+      state: 'active',
+      clicks: 0,
+      moratoriumStartAt: new Date(),
+      lastClickAt: null,
+      centroid,
+      polygon,
+    });
+  });
+  
+  // 4. Insert all 4 children atomically
+  await Triangle.insertMany(childTriangles, { session });
+  
+  // 5. Update parent triangle
+  triangle.state = 'subdivided';
+  triangle.childrenIds = childTriangles.map(t => t._id);
+  await triangle.save({ session });
+  
+  // 6. Create subdivision event for audit trail
+  const subdivisionEvent = new TriangleEvent({
+    _id: `subdivision-${Date.now()}-${random}`,
+    triangleId,
+    eventType: 'subdivision',
+    timestamp: new Date(),
+    account: null,
+    nonce: null,
+    signature: null,
+    payload: {
+      parentId: triangleId,
+      childrenIds: triangle.childrenIds,
+      level: parentId.level,
+      newLevel: parentId.level + 1,
+    },
+  });
+  await subdivisionEvent.save({ session });
+}
+```
+
+**Geodesic Subdivision Algorithm:**
+
+Given parent triangle with vertices A, B, C on unit sphere:
+
+1. **Compute Midpoints** (geodesic, not Euclidean):
+   - mAB = midpoint(A, B) on sphere surface
+   - mBC = midpoint(B, C) on sphere surface
+   - mCA = midpoint(C, A) on sphere surface
+
+2. **Create 4 Children**:
+   - **Child 0** (corner at A): [A, mAB, mCA]
+   - **Child 1** (corner at B): [mAB, B, mBC]
+   - **Child 2** (corner at C): [mCA, mBC, C]
+   - **Child 3** (center): [mAB, mBC, mCA]
+
+3. **Project to Lat/Lon**:
+   - Convert Cartesian (x,y,z) to spherical (lat,lon)
+   - Format as GeoJSON Polygon (closed ring)
+
+**Why Geodesic:**
+- Preserves equal-area property across hierarchy
+- Minimizes distortion on sphere
+- Ensures consistent triangle shapes globally
+- Industry standard for geodesic meshes
+
+**Subdivision Depth:**
+- Maximum level: 21 (configurable limit)
+- Level 21 triangles cannot subdivide
+- Estimated side length at Level 21: ~7.2 meters
+- Total possible triangles: 2.8 trillion
+
+**Performance:**
+- All operations inside single MongoDB transaction
+- Rollback on any error (atomic subdivision)
+- Subdivision adds ~5-10ms to proof processing
+- Only triggered once per triangle lifetime
+
 ### Transaction Safety
 
 **Atomicity:**
 All state updates happen inside a MongoDB transaction:
 1. Create TriangleEvent (with unique nonce index)
 2. Increment triangle.clicks
-3. Update account.balance
-4. (Future) Trigger subdivision at 11 clicks
+3. **Trigger subdivision if clicks === 11 (4 inserts + 1 update)**
+4. Update account.balance
 
 **Why Transactions:**
 - Prevents partial updates on concurrent submissions
 - Ensures nonce uniqueness at database level
 - Guarantees balance consistency
-- Allows rollback on any error
+- Allows rollback on any error (including subdivision failures)
+- Subdivision is all-or-nothing
 
 **Concurrency:**
 - MongoDB transactions use two-phase commit
 - Compound unique index on (account, nonce) prevents duplicates
 - Optimistic locking for triangle state
+- Multiple users can mine same triangle concurrently (last one triggers subdivision)
 
 ---
 

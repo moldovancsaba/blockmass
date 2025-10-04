@@ -162,10 +162,9 @@ export async function recoverAddressFromSig(
   let publicKey: Uint8Array;
   
   try {
-    // Try using the v2 recovery API
-    // v2 uses: secp.Signature.fromCompact(signature).recoverPublicKey(messageHash, recoveryId)
-    const sig = secp.Signature.fromCompact(signature);
-    const point = sig.recoverPublicKey(messageHash);
+    // v2 API: Create Signature from compact bytes, add recovery bit, then recover public key
+    const sig = secp.Signature.fromCompact(signature).addRecoveryBit(recoveryId);
+    const point = await sig.recoverPublicKey(messageHash);
     publicKey = point.toRawBytes(false); // false = uncompressed (65 bytes: 0x04 + x + y)
   } catch (e) {
     throw new Error(`Failed to recover public key: ${e instanceof Error ? e.message : String(e)}`);

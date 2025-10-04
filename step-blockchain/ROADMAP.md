@@ -238,11 +238,14 @@ Build the world's first proof-of-location blockchain where mining happens throug
 - Account management
 
 **Advanced Anti-Spoof:**
-- Multi-sensor fusion (accelerometer, gyroscope)
-- Hardware attestation (Trusted Execution Environment)
+- Multi-sensor fusion (accelerometer, gyroscope, compass)
+- **Hardware attestation (Trusted Execution Environment)**
+- **Dedicated GPS validation devices (Apple Beacon, custom hardware)**
+- **Secure hardware enclaves for proof generation**
 - Machine learning anomaly detection
 - Behavioral analysis
 - Proof-of-Proximity (nearby users validate)
+- Hardware-backed cryptographic proofs
 
 **Mobile Enhancements:**
 - AR visualization of triangles
@@ -251,12 +254,16 @@ Build the world's first proof-of-location blockchain where mining happens throug
 - Social features (friends, teams)
 - Gamification elements
 
-**Marketplace:**
-- Triangle trading
-- Location-based services
-- Advertising platform
-- Geo-fencing contracts
+**Business Platform:**
+- **Pathfinders marketplace** (companies hire users for location validation)
+- **Mining rights trading** (buy/sell triangle ownership)
+- **Hidden Gems system** (sponsored collectibles and coupons)
+- **POI sponsorship** (businesses boost rewards near locations)
+- Triangle trading and leasing
+- Location-based advertising platform
+- Geo-fencing smart contracts
 - Real estate integration
+- B2B dashboard and analytics
 
 **Governance:**
 - On-chain voting for protocol upgrades

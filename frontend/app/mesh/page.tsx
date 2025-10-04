@@ -289,7 +289,7 @@ export default function MeshExplorerPage() {
       console.log(`Fetching triangles: bbox=${bboxStr}, level=${level} (base=${baseLevel}), expecting ~${expectedCount}, requesting ${maxResults}, zoom=${viewport.zoom.toFixed(2)}`);
       
       const response = await fetch(
-        `http://localhost:3002/mesh/search?bbox=${bboxStr}&level=${level}&maxResults=${maxResults}&includePolygon=true`
+        `http://localhost:5500/mesh/search?bbox=${bboxStr}&level=${level}&maxResults=${maxResults}&includePolygon=true`
       );
 
       if (!response.ok) {
@@ -318,7 +318,7 @@ export default function MeshExplorerPage() {
   const fetchTrianglePolygon = useCallback(async (triangleId: string) => {
     try {
       const response = await fetch(
-        `http://localhost:3002/mesh/polygon/${encodeURIComponent(triangleId)}`
+        `http://localhost:5500/mesh/polygon/${encodeURIComponent(triangleId)}`
       );
 
       if (!response.ok) {
@@ -436,7 +436,7 @@ export default function MeshExplorerPage() {
       // Query API for triangle at this point
       try {
         const response = await fetch(
-          `http://localhost:3002/mesh/triangleAt?lat=${lat}&lon=${lon}&level=${level}`
+          `http://localhost:5500/mesh/triangleAt?lat=${lat}&lon=${lon}&level=${level}`
         );
 
         if (!response.ok) return;

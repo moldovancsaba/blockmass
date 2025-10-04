@@ -4,6 +4,14 @@ import Link from "next/link";
 
 const USE_CASES = [
   {
+    id: "mesh-mining-3d",
+    title: "⛏️  STEP Mesh Mining",
+    description:
+      "Interactive 3D mining game. Start with icosahedron on Earth sphere, click triangles to mine them (0-11 clicks), subdivide into 4 children. Real production game!",
+    path: "/mesh-mining-3d",
+    featured: true,
+  },
+  {
     id: "driver",
     title: "Driver Verification",
     description:
@@ -57,18 +65,19 @@ export default function Home() {
 }
 
 function UseCaseCard({ useCase }) {
-  const { title, description, path, comingSoon } = useCase;
+  const { title, description, path, comingSoon, featured } = useCase;
   const style = {
-    border: "1px solid #000",
-    background: "#FFF",
-    color: "#000",
+    border: featured ? "2px solid #00ff00" : "1px solid #000",
+    background: featured ? "#000" : "#FFF",
+    color: featured ? "#00ff00" : "#000",
     borderRadius: 12,
     padding: 20,
     textDecoration: "none",
     display: "block",
-    transition: "opacity 0.2s",
+    transition: "all 0.2s",
     opacity: comingSoon ? 0.5 : 1,
     cursor: comingSoon ? "not-allowed" : "pointer",
+    boxShadow: featured ? "0 0 20px rgba(0, 255, 0, 0.3)" : "none",
   };
 
   const content = (
