@@ -45,7 +45,7 @@ export interface ITriangle extends Document {
   childrenIds: string[]; // Array of 4 child IDs (empty until subdivision)
 
   // Mining state
-  state: 'pending' | 'active' | 'partially_mined' | 'exhausted';
+  state: 'pending' | 'active' | 'partially_mined' | 'exhausted' | 'subdivided';
   clicks: number; // 0-28 (number of successful mines)
   moratoriumStartAt: Date; // When triangle became mineable (+ 168h)
   lastClickAt: Date | null; // Last successful mine timestamp
@@ -106,7 +106,7 @@ const triangleSchema = new Schema<ITriangle>(
     },
     state: {
       type: String,
-      enum: ['pending', 'active', 'partially_mined', 'exhausted'],
+      enum: ['pending', 'active', 'partially_mined', 'exhausted', 'subdivided'],
       default: 'pending',
     },
     clicks: {

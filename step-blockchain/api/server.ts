@@ -14,13 +14,17 @@
  * - Easy to proxy in production
  */
 
+// Load environment variables from .env file
+import { config } from 'dotenv';
+config();
+
 import express from 'express';
-import { connectToDb, dbHealth } from '../core/db.js';
+import { connectToDb, dbHealth, closeDb } from '../core/db.js';
 import meshRouter from './mesh-simple.js';
 import proofRouter from './proof.js';
 
 const app = express();
-const PORT = process.env.PORT || 3002;
+const PORT = process.env.PORT || 5500;
 const NODE_ENV = process.env.NODE_ENV || 'development';
 
 /**
@@ -31,10 +35,21 @@ app.use(express.json());
 /**
  * Middleware: CORS (allow all origins in development)
  * 
- * In production, restrict to specific origins.
+ * Why explicit origin list: Frontend runs on port 5555, need to allow it explicitly
+ * Why credentials false: No cookies or auth headers needed for mesh API
+ * In production, restrict to specific production domains.
  */
 app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*'); // TODO: Restrict in production
+  const origin = req.headers.origin;
+  const allowedOrigins = ['http://localhost:5555', 'http://localhost:3000'];
+  
+  if (origin && allowedOrigins.includes(origin)) {
+    res.header('Access-Control-Allow-Origin', origin);
+  } else if (NODE_ENV === 'development') {
+    // Fallback for dev: allow all origins
+    res.header('Access-Control-Allow-Origin', '*');
+  }
+  
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   
@@ -145,27 +160,77 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 });
 
 /**
- * Start server
+ * Start server (non-blocking)
  * 
- * Initializes MongoDB connection, then starts HTTP server.
+ * Why non-blocking: Start HTTP server immediately, initialize DB in background
+ * Why guard timeout: Prevent indefinite waits if MongoDB is unreachable
+ * Why mesh route gating: Provide 503 errors instead of crashes when DB isn't ready
  */
-async function startServer() {
+
+const STARTUP_DB_WAIT_MS = parseInt(process.env.STARTUP_DB_WAIT_MS || '15000', 10);
+let dbReady = false;
+let lastDbError: string | null = null;
+
+// Initialize DB in background (non-blocking)
+(async () => {
+  const now = new Date().toISOString();
+  console.log(`[${now}] [api] Starting DB init with ${STARTUP_DB_WAIT_MS}ms guard timeout...`);
+  
   try {
-    // Initialize MongoDB connection
-    console.log(`[${new Date().toISOString()}] Connecting to MongoDB...`);
-    await connectToDb();
-    console.log(`[${new Date().toISOString()}] MongoDB connected successfully`);
+    // Race between DB init and guard timeout
+    await Promise.race([
+      connectToDb(),
+      new Promise((_, reject) => 
+        setTimeout(() => reject(new Error(`DB init guard timeout after ${STARTUP_DB_WAIT_MS}ms`)), STARTUP_DB_WAIT_MS)
+      )
+    ]);
     
-    // Start HTTP server
-    app.listen(PORT, () => {
-      console.log(`
+    dbReady = true;
+    lastDbError = null;
+    console.log(`[${new Date().toISOString()}] [api] DB ready - mesh endpoints now active`);
+  } catch (error: any) {
+    // Check if DB actually connected despite timeout
+    const health = dbHealth();
+    dbReady = health.status === 'ok';
+    lastDbError = error?.message || String(error);
+    
+    console.warn(`[${new Date().toISOString()}] [api] Proceeding without DB ready. Reason: ${lastDbError}`);
+    console.warn(`[${new Date().toISOString()}] [api] Mesh endpoints will return 503 until DB connects`);
+  }
+})();
+
+// Middleware: Guard DB-dependent routes
+function requireDbReady(req: express.Request, res: express.Response, next: express.NextFunction) {
+  if (!dbReady) {
+    return res.status(503).json({
+      ok: false,
+      error: {
+        code: 'SERVICE_UNAVAILABLE',
+        message: 'Database not ready',
+        hint: 'Retry shortly; backend is initializing DB connection',
+        details: lastDbError || undefined,
+      },
+      timestamp: new Date().toISOString(),
+    });
+  }
+  return next();
+}
+
+// Apply DB readiness guard to mesh and proof routes
+app.use('/mesh', requireDbReady);
+app.use('/proof', requireDbReady);
+
+// Start HTTP server immediately (non-blocking)
+const server = app.listen(PORT, () => {
+  const now = new Date().toISOString();
+  console.log(`
 ┌─────────────────────────────────────────────┐
 │  STEP Mesh API Server                       │
 ├─────────────────────────────────────────────┤
-│  Version:     0.1.0                         │
+│  Version:     0.2.0                         │
 │  Port:        ${PORT}                            │
 │  Environment: ${NODE_ENV}                    │
-│  Started:     ${new Date().toISOString()}   │
+│  Started:     ${now}   │
 └─────────────────────────────────────────────┘
 
 API endpoints:
@@ -176,14 +241,20 @@ API endpoints:
   → http://localhost:${PORT}/proof/config
 
 Press Ctrl+C to stop.
-      `.trim());
-    });
-  } catch (error) {
-    console.error(`[${new Date().toISOString()}] Failed to start server:`, error);
-    process.exit(1);
-  }
-}
+  `.trim());
+});
 
-startServer();
+// Process hooks for graceful shutdown
+process.on('SIGTERM', async () => {
+  console.log(`[${new Date().toISOString()}] [api] SIGTERM received; shutting down`);
+  try { await closeDb(); } catch {}
+  server.close(() => process.exit(0));
+});
+
+process.on('SIGINT', async () => {
+  console.log(`[${new Date().toISOString()}] [api] SIGINT received; shutting down`);
+  try { await closeDb(); } catch {}
+  server.close(() => process.exit(0));
+});
 
 export default app;

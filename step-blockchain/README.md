@@ -13,6 +13,7 @@ STEP is a novel blockchain that uses physical location as proof-of-work. Users m
 ## 📋 Table of Contents
 
 - [Overview](#overview)
+- [Mission](#mission-financial-freedom-for-all)
 - [Features](#features)
 - [Architecture](#architecture)
 - [Getting Started](#getting-started)
@@ -20,6 +21,7 @@ STEP is a novel blockchain that uses physical location as proof-of-work. Users m
 - [Proof Contract](#proof-contract)
 - [Development](#development)
 - [Deployment](#deployment)
+- [Business Model](#business-model)
 - [Roadmap](#roadmap)
 
 ---
@@ -29,6 +31,20 @@ STEP is a novel blockchain that uses physical location as proof-of-work. Users m
 ### What is STEP?
 
 STEP (Space-Time Proof) is a blockchain where mining happens in the real world. Instead of solving cryptographic puzzles, users prove they're physically present at a location by submitting GPS-verified location proofs.
+
+### Mission: Financial Freedom for All
+
+**"Everyone has the right to work, to free choice of employment, to just and favourable conditions of work..."**  
+— UN Declaration, Article 23
+
+STEP democratizes cryptocurrency mining by removing barriers to entry:
+
+- **No expensive hardware** - Mine with your smartphone
+- **Geographic equality** - Mining in Myanmar = Mining in Manhattan
+- **Zero entry cost** - No investment required to start
+- **Proactive Passive Income** - Earn while you move
+
+Unlike traditional crypto mining that requires expensive ASICs or GPUs, STEP gives everyone—regardless of location or economic status—an equal opportunity to participate in the blockchain economy.
 
 ### Key Concepts
 
@@ -416,7 +432,81 @@ Expected uptime: 99.9%+
 
 ---
 
-## 🗺 Roadmap
+## 💼 Business Model
+
+### Revenue Streams
+
+STEP creates value for multiple stakeholders through innovative location-based services:
+
+#### 1. Pathfinders Program (B2B)
+
+**Companies hire users to mine specific locations:**
+- Businesses pay users to visit and validate points of interest
+- Market research: Verify store hours, product availability, conditions
+- Quality assurance: Photo verification, crowd-sourced audits
+- Competitive intelligence: Monitor competitor locations
+
+**Example:** Restaurant chain pays pathfinders $10 + triangle rewards to verify menu displays across 1,000 locations.
+
+#### 2. Mining Rights Sales (B2B)
+
+**Companies purchase exclusive or priority mining rights:**
+- Retail: Buy triangles around store locations
+- Real estate: Secure valuable downtown areas
+- Tourism: Own landmarks and attractions
+- Events: Exclusive mining during conferences/festivals
+
+**Example:** Nike buys 10,000 triangles around flagship stores worldwide, earning fees from user mining activity.
+
+#### 3. Hidden Gems & Sponsored Content (B2B/B2C)
+
+**Location-based collectibles and advertisements:**
+- Digital coupons ("Find a Coke Zero coupon in Times Square")
+- Limited edition NFTs at specific locations
+- Scavenger hunts with branded rewards
+- Location-triggered promotions
+
+**Example:** Starbucks places 100,000 "Free Coffee" gems in triangles near their stores, driving foot traffic.
+
+#### 4. Point-of-Interest Sponsorship (B2B)
+
+**Drive active foot traffic to physical locations:**
+- Increased mining rewards near sponsored locations
+- Time-limited bonus events
+- "Check-in" rewards for visiting businesses
+- Customer acquisition with measurable ROI
+
+**Example:** Mall increases triangle rewards 10x during off-peak hours, driving traffic when stores need it most.
+
+### Value Proposition
+
+**For Users (B2C):**
+- Earn STEP tokens while going about daily life
+- No entry cost or expensive equipment
+- Passive income from regular activities (commuting, shopping, walking)
+- Additional earning through pathfinder missions
+- Collectibles and exclusive rewards
+
+**For Businesses (B2B):**
+- Measurable foot traffic generation
+- Customer acquisition with transparent ROI
+- Market research at scale
+- Brand engagement through gamification
+- Real-world presence verification
+
+**Problem Solved:**
+- **Traditional Marketing:** No way to actively drive guaranteed foot traffic
+- **Crypto Exclusivity:** High barriers to entry (expensive hardware, technical knowledge)
+- **Passive Income Myth:** Most people don't know how to generate it
+
+**STEP Solution:**
+- **Brick & Mortar Sales:** Drive active traffic with value-per-visit metrics
+- **Crypto Democratization:** Smartphone mining with zero entry cost
+- **Proactive Passive Income:** Move to earn — simple, accessible, universal
+
+---
+
+## 🗯 Roadmap
 
 See [ROADMAP.md](./ROADMAP.md) for detailed development plans.
 

@@ -32,6 +32,12 @@ import {
   validateMoratorium,
   getConfig as getValidatorConfig,
 } from '../core/validator/geometry.js';
+import { 
+  getChildrenIds, 
+  decodeTriangleId, 
+  encodeTriangleId 
+} from '../core/mesh/addressing.js';
+import { triangleIdToPolygon, triangleIdToCentroid } from '../core/mesh/polygon.js';
 
 const router = Router();
 
@@ -413,6 +419,83 @@ router.post('/submit', async (req: Request, res: Response) => {
         triangle.clicks += 1;
         triangle.lastClickAt = new Date();
         await triangle.save({ session });
+        
+        // ====================================================================
+        // Subdivision Logic: Trigger when clicks reach 11
+        // ====================================================================
+        // Why: At 11 clicks, triangle has been sufficiently mined
+        // Action: Subdivide into 4 children, mark parent as subdivided
+        // Implementation: Uses Phase 1 mesh utilities for deterministic
+        // subdivision based on geodesic midpoints on sphere
+        
+        if (triangle.clicks === 11) {
+          console.log(`[${timestamp}] Subdivision triggered for ${triangleId}`);
+          
+          try {
+            // Decode parent triangle ID to get face, level, path
+            const parentId = decodeTriangleId(triangleId);
+            
+            // Get 4 child triangle IDs (adds one path digit to each)
+            const childIds = getChildrenIds(parentId);
+            
+            // Create child triangle documents
+            const childTriangles = childIds.map((childId) => {
+              // Compute polygon and centroid using Phase 1 utilities
+              const polygon = triangleIdToPolygon(childId);
+              const centroid = triangleIdToCentroid(childId);
+              
+              // Encode child ID to STEP-TRI-v1 string format
+              const childTriangleId = encodeTriangleId(childId);
+              
+              return new Triangle({
+                _id: childTriangleId,
+                face: childId.face,
+                level: childId.level,
+                pathEncoded: childId.path.join(''),
+                parentId: triangleId,
+                childrenIds: [],
+                state: 'active',
+                clicks: 0,
+                moratoriumStartAt: new Date(),
+                lastClickAt: null,
+                centroid,
+                polygon,
+              });
+            });
+            
+            // Save all 4 child triangles
+            await Triangle.insertMany(childTriangles, { session });
+            
+            // Update parent triangle: mark as subdivided
+            triangle.state = 'subdivided';
+            triangle.childrenIds = childTriangles.map(t => t._id);
+            await triangle.save({ session });
+            
+            // Create subdivision event for audit trail
+            const subdivisionEventId = `subdivision-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+            const subdivisionEvent = new TriangleEvent({
+              _id: subdivisionEventId,
+              triangleId,
+              eventType: 'subdivide',
+              timestamp: new Date(),
+              account: null,
+              nonce: null,
+              signature: null,
+              payload: {
+                parentId: triangleId,
+                childrenIds: triangle.childrenIds,
+                level: parentId.level,
+                newLevel: parentId.level + 1,
+              },
+            });
+            await subdivisionEvent.save({ session });
+            
+            console.log(`[${timestamp}] Subdivision complete: ${triangleId} → 4 children at level ${parentId.level + 1}`);
+          } catch (subdivisionError) {
+            console.error(`[${timestamp}] Subdivision failed:`, subdivisionError);
+            throw subdivisionError; // Rollback transaction on subdivision failure
+          }
+        }
         
         // Update account balance
         // Convert reward string to bigint (assuming 6 decimals)
