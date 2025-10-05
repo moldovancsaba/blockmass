@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 
 const USE_CASES = [
   {
@@ -37,12 +38,85 @@ const USE_CASES = [
 ];
 
 export default function Home() {
+  const [apiStatus, setApiStatus] = useState(null);
+  const [isWakingUp, setIsWakingUp] = useState(false);
+
+  const wakeUpApi = async () => {
+    setIsWakingUp(true);
+    setApiStatus('Waking up server... (may take 30-60 seconds)');
+    
+    try {
+      const response = await fetch('https://step-blockchain-api.onrender.com/health');
+      const data = await response.json();
+      setApiStatus(`✅ Server is awake! Version: ${data.version || 'unknown'}`);
+    } catch (error) {
+      setApiStatus('⚠️ Server wake-up in progress, try again in 30 seconds');
+    } finally {
+      setIsWakingUp(false);
+    }
+  };
+
   return (
     <main style={{ maxWidth: 820, margin: "40px auto", padding: "0 20px" }}>
       <h1 style={{ fontSize: 28, fontWeight: 800, marginBottom: 10 }}>Blockmass</h1>
-      <p style={{ opacity: 0.8, marginBottom: 24 }}>
+      <p style={{ opacity: 0.8, marginBottom: 16 }}>
         Select a use case to create verifiable proof-of-location records.
       </p>
+
+      {/* API Server Wake-Up Button */}
+      <div style={{ 
+        marginBottom: 24, 
+        padding: 16, 
+        border: '2px solid #0066ff', 
+        borderRadius: 12,
+        background: '#f0f7ff'
+      }}>
+        <div style={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: 12
+        }}>
+          <div>
+            <div style={{ fontWeight: 700, marginBottom: 4, color: '#0066ff' }}>
+              🚀 STEP Blockchain API
+            </div>
+            <div style={{ fontSize: 14, opacity: 0.8 }}>
+              Server sleeps after 30 minutes of inactivity. Click to wake up!
+            </div>
+          </div>
+          <button
+            onClick={wakeUpApi}
+            disabled={isWakingUp}
+            style={{
+              padding: '10px 20px',
+              fontSize: 14,
+              fontWeight: 700,
+              border: '2px solid #0066ff',
+              borderRadius: 8,
+              background: isWakingUp ? '#ccc' : '#0066ff',
+              color: '#fff',
+              cursor: isWakingUp ? 'wait' : 'pointer',
+              transition: 'all 0.2s',
+            }}
+          >
+            {isWakingUp ? 'Waking Up...' : 'Wake Up Server'}
+          </button>
+        </div>
+        {apiStatus && (
+          <div style={{ 
+            marginTop: 12, 
+            padding: 12, 
+            background: '#fff',
+            borderRadius: 8,
+            fontSize: 14,
+            fontFamily: 'monospace'
+          }}>
+            {apiStatus}
+          </div>
+        )}
+      </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 16 }}>
         {USE_CASES.map((useCase) => (
