@@ -1,6 +1,6 @@
 {
   "name": "step-blockchain",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "STEP Blockchain Protocol - Proof-of-Location consensus with icosahedron mesh system",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
