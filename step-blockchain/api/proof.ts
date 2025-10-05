@@ -54,6 +54,10 @@ import {
   verifyGnssRaw,
   type GnssResult,
 } from '../core/validator/gnss.js';
+import {
+  verifyCellTower,
+  type CellTowerResult,
+} from '../core/validator/cell-tower.js';
 
 const router = Router();
 
@@ -445,6 +449,7 @@ router.post('/submit', async (req: Request, res: Response) => {
     
     let attestationResult: AttestationResult | undefined;
     let gnssResult: GnssResult | undefined;
+    let cellTowerResult: CellTowerResult | undefined;
     let confidenceScore = 0;
     let validationResults: ValidationResults;
     
@@ -528,6 +533,28 @@ router.post('/submit', async (req: Request, res: Response) => {
       } catch (error) {
         console.warn(`[${timestamp}] GNSS verification error:`, error);
         // Non-critical - continue without GNSS score
+      }
+    }
+    
+    // Check cell tower (Phase 2.5 Week 3 - Android & iOS)
+    if (isProofPayloadV2(payload) && payload.cell) {
+      try {
+        cellTowerResult = await verifyCellTower(payload.cell, lat, lon);
+        validationResults.cellTowerOk = cellTowerResult.passed;
+        validationResults.cellTowerScore = cellTowerResult.score;
+        
+        console.log(`[${timestamp}] Cell tower verified:`, {
+          distance: cellTowerResult.distanceKm,
+          score: cellTowerResult.score,
+          passed: cellTowerResult.passed,
+        });
+        
+        if (cellTowerResult.issues.length > 0) {
+          console.warn(`[${timestamp}] Cell tower issues:`, cellTowerResult.issues);
+        }
+      } catch (error) {
+        console.warn(`[${timestamp}] Cell tower verification error:`, error);
+        // Non-critical - continue without cell tower score
       }
     }
     
