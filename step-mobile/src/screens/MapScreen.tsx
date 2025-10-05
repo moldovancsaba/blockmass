@@ -25,6 +25,7 @@ import * as WalletLib from '../lib/wallet';
 import { collectProofData } from '../lib/proof-collector';
 import { Triangle } from '../types';
 import { ProofCollectionProgress, ProofSubmissionResponseV2 } from '../types/proof-v2';
+import * as TestMode from '../lib/test-mode';
 
 export default function MapScreen() {
   // State
@@ -36,6 +37,7 @@ export default function MapScreen() {
   const [mining, setMining] = useState<boolean>(false);
   const [collectionProgress, setCollectionProgress] = useState<ProofCollectionProgress | null>(null);
   const [lastResult, setLastResult] = useState<ProofSubmissionResponseV2 | null>(null);
+  const [testMode, setTestModeState] = useState<boolean>(TestMode.isTestModeEnabled());
 
   /**
    * Initialize app on mount:
@@ -149,21 +151,30 @@ export default function MapScreen() {
       setCollectionProgress(null);
       setLastResult(null);
 
-      console.log('[MapScreen] Starting Phase 2.5 proof collection...');
+      console.log(`[MapScreen] Starting Phase 2.5 proof collection... (Test Mode: ${testMode ? 'ON' : 'OFF'})`);
 
       // Collect all proof data (location, GNSS, cell, attestation)
-      const collectionResult = await collectProofData(
-        wallet.address,
-        currentTriangle.triangleId,
-        {
-          includeGnss: true,  // Android only, will be skipped on iOS
-          includeCell: true,
-          onProgress: (progress) => {
-            console.log(`[MapScreen] ${progress.message} (${progress.percentage}%)`);
-            setCollectionProgress(progress);
-          },
-        }
-      );
+      // Use test mode if enabled (DEV only)
+      const collectionOptions = {
+        includeGnss: true,  // Android only, will be skipped on iOS
+        includeCell: true,
+        onProgress: (progress) => {
+          console.log(`[MapScreen] ${progress.message} (${progress.percentage}%)`);
+          setCollectionProgress(progress);
+        },
+      };
+
+      const collectionResult = testMode
+        ? await TestMode.collectProofDataTestMode(
+            wallet.address,
+            currentTriangle.triangleId,
+            collectionOptions
+          )
+        : await collectProofData(
+            wallet.address,
+            currentTriangle.triangleId,
+            collectionOptions
+          );
 
       if (!collectionResult.success || !collectionResult.payload) {
         setMining(false);
@@ -196,9 +207,11 @@ export default function MapScreen() {
       const signature = await WalletLib.signMessage(message);
       console.log('[MapScreen] Payload signed');
 
-      // Submit to validator
-      console.log('[MapScreen] Submitting to validator API...');
-      const result = await MeshClient.submitProofV2(payload, signature);
+      // Submit to validator (or use test mode)
+      console.log(`[MapScreen] Submitting to validator API... (Test Mode: ${testMode ? 'ON' : 'OFF'})`);
+      const result = testMode
+        ? await TestMode.submitProofTestMode(payload, signature)
+        : await MeshClient.submitProofV2(payload, signature);
 
       // Store result for display
       setLastResult(result);
@@ -248,6 +261,23 @@ export default function MapScreen() {
     if (confidence >= 60) return '✅';
     if (confidence >= 40) return '⚠️';
     return '❌';
+  };
+
+  /**
+   * Toggle test mode on/off
+   */
+  const toggleTestMode = () => {
+    const newValue = !testMode;
+    setTestModeState(newValue);
+    TestMode.setTestMode(newValue);
+    Alert.alert(
+      'Test Mode',
+      `Test mode is now ${newValue ? 'ENABLED' : 'DISABLED'}.\n\n` +
+      (newValue
+        ? 'The app will use simulated data for testing UI and flows without real hardware attestation.'
+        : 'The app will use real data collection and API calls.'),
+      [{ text: 'OK' }]
+    );
   };
   
   /**
@@ -316,11 +346,32 @@ export default function MapScreen() {
 
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.title}>STEP Miner</Text>
-        {wallet && (
-          <Text style={styles.subtitle}>
-            {wallet.address.substring(0, 10)}...{wallet.address.substring(wallet.address.length - 4)}
-          </Text>
+        <View style={styles.headerTop}>
+          <View>
+            <Text style={styles.title}>STEP Miner</Text>
+            {wallet && (
+              <Text style={styles.subtitle}>
+                {wallet.address.substring(0, 10)}...{wallet.address.substring(wallet.address.length - 4)}
+              </Text>
+            )}
+          </View>
+          {__DEV__ && (
+            <TouchableOpacity
+              style={[styles.testModeButton, testMode && styles.testModeButtonActive]}
+              onPress={toggleTestMode}
+            >
+              <Text style={styles.testModeButtonText}>
+                {testMode ? '🧪 TEST' : '💼 PROD'}
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
+        {testMode && (
+          <View style={styles.testModeBanner}>
+            <Text style={styles.testModeBannerText}>
+              ⚠️ TEST MODE: Using simulated data
+            </Text>
+          </View>
         )}
       </View>
 
@@ -456,6 +507,11 @@ const styles = StyleSheet.create({
     borderBottomWidth: 2,
     borderBottomColor: '#FFFFFF',
   },
+  headerTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
   title: {
     fontSize: 24,
     fontWeight: 'bold',
@@ -465,6 +521,35 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#CCCCCC',
     marginTop: 4,
+  },
+  testModeButton: {
+    backgroundColor: '#333333',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: '#666666',
+  },
+  testModeButtonActive: {
+    backgroundColor: '#FF9800',
+    borderColor: '#FF9800',
+  },
+  testModeButtonText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: 'bold',
+  },
+  testModeBanner: {
+    backgroundColor: '#FF9800',
+    paddingVertical: 8,
+    marginTop: 12,
+    borderRadius: 4,
+  },
+  testModeBannerText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: 'bold',
+    textAlign: 'center',
   },
   mapPlaceholder: {
     flex: 1,
