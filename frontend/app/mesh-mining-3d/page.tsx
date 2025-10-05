@@ -39,6 +39,67 @@ interface Triangle {
   children: string[];
 }
 
+/**
+ * Convert API triangle ID + clicks to human-readable hierarchical ID
+ * Format: {face}.{children}:{layer}
+ * 
+ * Examples:
+ * - "13" - Face 13, no clicks
+ * - "13:5" - Face 13, layer 5 (5 clicks)
+ * - "13.1.0.3" - Face 13, subdivision path
+ * - "13.1.0.3:7" - Face 13, subdivision path, layer 7 (7 clicks)
+ */
+function getHumanReadableId(apiId: string, level: number, clicks: number): string {
+  try {
+    // Parse API ID: STEP-TRI-v1:{FaceLetter}{Level}-{path}-{checksum}
+    // Example: "STEP-TRI-v1:M6-10330000000000000000-V75"
+    // Face letter (M, N, L, etc.) + Level number
+    // Path digits represent subdivision hierarchy
+    
+    const match = apiId.match(/([A-Z])(\d+)-(\d+)/);
+    if (!match) {
+      return '?';
+    }
+    
+    const faceLetter = match[1];
+    const parsedLevel = parseInt(match[2]);
+    const path = match[3];
+    
+    // Convert face letter to number (A=1, B=2, ..., M=13, etc.)
+    const faceNumber = faceLetter.charCodeAt(0) - 'A'.charCodeAt(0) + 1;
+    
+    // Extract non-zero digits from path (they form the subdivision hierarchy)
+    const pathDigits: number[] = [];
+    for (let i = 0; i < path.length; i++) {
+      const digit = parseInt(path[i]);
+      if (digit !== 0) {
+        pathDigits.push(digit);
+      }
+    }
+    
+    // Build hierarchical ID
+    let baseId: string;
+    if (pathDigits.length === 0) {
+      // Level 1: just face number
+      baseId = `${faceNumber}`;
+    } else {
+      // Level 2+: face.child1.child2...
+      // Example: M6 with path [1,0,3,3] -> "13.1.0.3.3"
+      baseId = `${faceNumber}.${pathDigits.join('.')}`;
+    }
+    
+    // Add layer (clicks) if any
+    if (clicks > 0) {
+      return `${baseId}:${clicks}`;
+    }
+    
+    return baseId;
+    
+  } catch (e) {
+    return '?';
+  }
+}
+
 interface TriangleComponentProps {
   triangle: Triangle;
   onMine: (id: string) => void;
@@ -60,12 +121,61 @@ function latLonToVector3(lat: number, lon: number): THREE.Vector3 {
   const phi = (90 - lat) * (Math.PI / 180); // Polar angle (0 at north pole)
   const theta = (lon + 180) * (Math.PI / 180); // Azimuthal angle
   
-  // Spherical to Cartesian coordinates on unit sphere
-  const x = -Math.sin(phi) * Math.cos(theta);
-  const y = Math.cos(phi);
-  const z = Math.sin(phi) * Math.sin(theta);
+  // Spherical to Cartesian coordinates
+  // IMPORTANT: Scale to radius 0.9999 (slightly inside conceptual Earth at 1.0)
+  // This allows camera to get very close (down to 1.0) without penetrating mesh
+  const MESH_RADIUS = 0.9999;
+  const x = -Math.sin(phi) * Math.cos(theta) * MESH_RADIUS;
+  const y = Math.cos(phi) * MESH_RADIUS;
+  const z = Math.sin(phi) * Math.sin(theta) * MESH_RADIUS;
   
   return new THREE.Vector3(x, y, z);
+}
+
+/**
+ * Create TRUE spherical triangles with geodesic subdivision
+ * Uses recursive midpoint subdivision - each edge is split at its midpoint,
+ * then projected back onto the sphere surface to create great circle arcs
+ */
+function createSphericalTriangleGeometry(v1: THREE.Vector3, v2: THREE.Vector3, v3: THREE.Vector3, subdivisions: number = 3): THREE.BufferGeometry {
+  const positions: number[] = [];
+  
+  /**
+   * Subdivide a single spherical triangle recursively
+   * Creates 4 sub-triangles at each level by splitting edges at midpoints
+   */
+  function subdivide(a: THREE.Vector3, b: THREE.Vector3, c: THREE.Vector3, depth: number) {
+    if (depth === 0) {
+      // Base case: output the triangle
+      positions.push(a.x, a.y, a.z);
+      positions.push(b.x, b.y, b.z);
+      positions.push(c.x, c.y, c.z);
+    } else {
+      // Find midpoints and project onto sphere (creates great circle arcs)
+      const ab = new THREE.Vector3().addVectors(a, b).multiplyScalar(0.5).normalize();
+      const bc = new THREE.Vector3().addVectors(b, c).multiplyScalar(0.5).normalize();
+      const ca = new THREE.Vector3().addVectors(c, a).multiplyScalar(0.5).normalize();
+      
+      // Recursively subdivide into 4 triangles
+      subdivide(a, ab, ca, depth - 1);
+      subdivide(b, bc, ab, depth - 1);
+      subdivide(c, ca, bc, depth - 1);
+      subdivide(ab, bc, ca, depth - 1);
+    }
+  }
+  
+  // Start recursive subdivision
+  subdivide(v1, v2, v3, subdivisions);
+  
+  // Create geometry
+  const geometry = new THREE.BufferGeometry();
+  const positionArray = new Float32Array(positions);
+  geometry.setAttribute('position', new THREE.BufferAttribute(positionArray, 3));
+  geometry.computeVertexNormals();
+  
+  console.log(`Created spherical triangle with ${positions.length / 9} sub-triangles`);
+  
+  return geometry;
 }
 
 /**
@@ -84,7 +194,7 @@ function computeCentroid3D(vertices: [number, number][]): THREE.Vector3 {
 function getTriangleColor(status: string, clicks: number): string {
   switch (status) {
     case 'pending':
-      return '#1a1a1a'; // Gray - not yet touched
+      return '#222222'; // Dark gray base color - not yet touched
     case 'active':
       // Yellow gradient based on clicks (1-7)
       const intensity = Math.min(clicks / 7, 1);
@@ -97,27 +207,35 @@ function getTriangleColor(status: string, clicks: number): string {
     case 'subdivided':
       return '#0066ff'; // Blue - already subdivided
     default:
-      return '#1a1a1a';
+      return '#222222'; // Dark gray fallback
   }
 }
 
 /**
  * Calculate altitude in meters from camera distance to sphere center
+ * 
+ * Triangles are at radius 1.0 and represent Earth surface
+ * Real Earth radius = 6,371 km = 6,371,000 m
+ * Camera distance = (Earth radius + altitude) / Earth radius
+ * Therefore: altitude = (distance - 1.0) * Earth radius
  */
 function cameraDistanceToAltitude(distance: number): number {
-  // Sphere radius = 1 unit
-  // Distance = 1 + (altitude / Earth radius)
-  // Earth radius ~6,371 km
-  const EARTH_RADIUS_M = 6371000;
-  return (distance - 1) * EARTH_RADIUS_M;
+  const EARTH_RADIUS_M = 6371000; // 6,371 km
+  return (distance - 1.0) * EARTH_RADIUS_M;
 }
 
 /**
  * Calculate camera distance from desired altitude
+ * 
+ * Triangles at radius 1.0 represent Earth surface
+ * distance = 1.0 + (altitude / Earth radius)
+ * At altitude 0 (ground): distance = 1.0
+ * At altitude 100m: distance = 1.000016
+ * At altitude 6371km (1 Earth radius up): distance = 2.0
  */
 function altitudeToCameraDistance(altitudeMeters: number): number {
-  const EARTH_RADIUS_M = 6371000;
-  return 1 + (altitudeMeters / EARTH_RADIUS_M);
+  const EARTH_RADIUS_M = 6371000; // 6,371 km
+  return 1.0 + (altitudeMeters / EARTH_RADIUS_M);
 }
 
 // ========================================
@@ -132,7 +250,8 @@ function altitudeToCameraDistance(altitudeMeters: number): number {
  */
 function SphericalTriangle({ triangle, onMine, isSelected }: TriangleComponentProps) {
   const meshRef = useRef<THREE.Mesh>(null);
-  const { camera, raycaster, mouse } = useThree();
+  const { camera } = useThree();
+  const [isVisible, setIsVisible] = useState(true);
 
   // Convert lat/lon vertices to 3D positions on unit sphere
   const vertices3D = useMemo(() => {
@@ -141,22 +260,13 @@ function SphericalTriangle({ triangle, onMine, isSelected }: TriangleComponentPr
     return verts;
   }, [triangle.vertices, triangle.id]);
 
-  // Create triangle geometry
+  // Create TRUE spherical triangle geometry with great circle edges
   const geometry = useMemo(() => {
-    const geom = new THREE.BufferGeometry();
-    
-    // Set triangle vertices
-    const positions = new Float32Array([
-      vertices3D[0].x, vertices3D[0].y, vertices3D[0].z,
-      vertices3D[1].x, vertices3D[1].y, vertices3D[1].z,
-      vertices3D[2].x, vertices3D[2].y, vertices3D[2].z,
-    ]);
-    geom.setAttribute('position', new THREE.BufferGeometry().attributes.position = new THREE.BufferAttribute(positions, 3));
-    
-    // Compute normals for lighting
-    geom.computeVertexNormals();
-    
-    return geom;
+    console.log('🚀🚀🚀 NEW CODE v0.21.37 - TRUE SPHERICAL GEOMETRY 🚀🚀🚀');
+    // Use 5 subdivisions: 1→4→16→64→256→1024 sub-triangles
+    // Creates HIGHLY VISIBLE spherical curvature with great circle arcs
+    // Each edge midpoint is projected onto sphere - this IS spherical geometry!
+    return createSphericalTriangleGeometry(vertices3D[0], vertices3D[1], vertices3D[2], 5);
   }, [vertices3D]);
 
   // Centroid position for label
@@ -164,6 +274,62 @@ function SphericalTriangle({ triangle, onMine, isSelected }: TriangleComponentPr
 
   // Triangle color based on status
   const color = useMemo(() => getTriangleColor(triangle.status, triangle.clicks), [triangle.status, triangle.clicks]);
+
+  // Check if triangle is facing camera (front side visible)
+  useFrame(() => {
+    if (!camera) return;
+    
+    // Vector from Earth center to centroid (triangle normal direction)
+    const triangleNormal = centroid3D.clone().normalize();
+    
+    // Vector from Earth center to camera
+    const cameraDirection = camera.position.clone().normalize();
+    
+    // Dot product: if > 0, triangle is facing camera
+    const dotProduct = triangleNormal.dot(cameraDirection);
+    
+    setIsVisible(dotProduct > 0);
+  });
+
+  // Create CURVED EDGES using great circle arcs
+  const curvedEdges = useMemo(() => {
+    const curves: THREE.Vector3[][] = [];
+    const segments = 20; // Points per edge for smooth curves
+    
+    // Create 3 edges with SLERP interpolation (great circles)
+    const edges = [
+      [vertices3D[0], vertices3D[1]],
+      [vertices3D[1], vertices3D[2]],
+      [vertices3D[2], vertices3D[0]]
+    ];
+    
+    edges.forEach(([v1, v2]) => {
+      const points: THREE.Vector3[] = [];
+      for (let i = 0; i <= segments; i++) {
+        const t = i / segments;
+        // SLERP for true great circle arc
+        const dot = v1.dot(v2);
+        const theta = Math.acos(Math.max(-1, Math.min(1, dot)));
+        
+        if (Math.abs(theta) < 0.001) {
+          points.push(new THREE.Vector3().lerpVectors(v1, v2, t).normalize());
+        } else {
+          const sinTheta = Math.sin(theta);
+          const ratioA = Math.sin((1 - t) * theta) / sinTheta;
+          const ratioB = Math.sin(t * theta) / sinTheta;
+          
+          points.push(new THREE.Vector3(
+            v1.x * ratioA + v2.x * ratioB,
+            v1.y * ratioA + v2.y * ratioB,
+            v1.z * ratioA + v2.z * ratioB
+          ));
+        }
+      }
+      curves.push(points);
+    });
+    
+    return curves;
+  }, [vertices3D]);
 
   // Click handler
   const handleClick = (event: any) => {
@@ -180,37 +346,51 @@ function SphericalTriangle({ triangle, onMine, isSelected }: TriangleComponentPr
         onClick={handleClick}
       >
         <meshStandardMaterial
-          color={color}
-          emissive={color}
-          emissiveIntensity={0.3}
-          side={THREE.DoubleSide}
+          color="#222222"
+          metalness={0.0}
+          roughness={1.0}
+          side={THREE.FrontSide}
           wireframe={false}
+          opacity={1.0}
+          transparent={false}
+          depthWrite={true}
+          depthTest={true}
         />
       </mesh>
 
-      {/* White edges */}
-      <lineSegments geometry={geometry}>
-        <lineBasicMaterial color={isSelected ? '#ffffff' : '#ffffff'} linewidth={isSelected ? 3 : 1} />
-      </lineSegments>
+      {/* TRUE CURVED EDGES - Great circle arcs */}
+      {curvedEdges.map((edgePoints, edgeIndex) => {
+        const lineGeometry = new THREE.BufferGeometry().setFromPoints(edgePoints);
+        return (
+          <line key={edgeIndex} geometry={lineGeometry}>
+            <lineBasicMaterial 
+              color={isSelected ? '#ffffff' : '#00ffff'} 
+              linewidth={2}
+              transparent={false}
+            />
+          </line>
+        );
+      })}
 
-      {/* Triangle ID label */}
-      <Html position={centroid3D} center style={{ pointerEvents: 'none' }}>
-        <div style={{
-          color: 'white',
-          fontFamily: 'monospace',
-          fontSize: '10px',
-          textAlign: 'center',
-          textShadow: '0 0 3px black',
-          whiteSpace: 'nowrap',
-        }}>
-          {triangle.id.substring(0, 12)}
-          {triangle.clicks > 0 && (
-            <div style={{ color: '#ff00ff', fontSize: '8px' }}>
-              {triangle.clicks}/11
-            </div>
-          )}
-        </div>
-      </Html>
+      {/* Triangle ID label - ONLY show if facing camera (front side) */}
+      {isVisible && (
+        <Html 
+          position={centroid3D} 
+          center 
+          style={{ pointerEvents: 'none' }}
+        >
+          <div style={{
+            color: 'white',
+            fontFamily: 'monospace',
+            fontSize: '10px',
+            textAlign: 'center',
+            textShadow: '0 0 3px black',
+            whiteSpace: 'nowrap',
+          }}>
+            {getHumanReadableId(triangle.id, triangle.level, triangle.clicks)}
+          </div>
+        </Html>
+      )}
     </group>
   );
 }
@@ -220,18 +400,20 @@ function SphericalTriangle({ triangle, onMine, isSelected }: TriangleComponentPr
 // ========================================
 
 /**
- * Base Earth sphere (unit sphere)
- * - Provides visual reference for the planet
- * - Dark blue texture representing oceans
+ * Base Earth sphere (solid inner sphere)
+ * - Prevents seeing through to the back side of Earth
+ * - Radius 0.998 (slightly smaller than mesh at 0.9999)
+ * - Dark color to block visibility
  */
 function EarthSphere() {
   return (
     <mesh>
-      <sphereGeometry args={[0.99, 64, 64]} />
-      <meshStandardMaterial
-        color="#0044aa"
-        transparent
-        opacity={0.8}
+      <sphereGeometry args={[0.998, 64, 64]} />
+      <meshBasicMaterial 
+        color="#000000" 
+        side={THREE.FrontSide}
+        depthWrite={true}
+        depthTest={true}
       />
     </mesh>
   );
@@ -253,43 +435,65 @@ function CameraController({ triangleCount, onAltitudeChange }: { triangleCount: 
 
   // Calculate zoom limits based on active triangle count
   const { minDistance, maxDistance } = useMemo(() => {
-    // ISS altitude: 400km
-    const ISS_ALTITUDE_M = 400000;
-    // Ground level: 100m
-    const GROUND_ALTITUDE_M = 100;
+    // Max zoom out: Fixed at distance 1.5 (~3,185 km altitude)
+    const MAX_DISTANCE = 1.5; // Fixed maximum zoom out
+    // Max zoom in: 64km above surface (safe altitude, prevents going through)
+    const GROUND_ALTITUDE_M = 64000; // 64km minimum altitude
 
-    let minAltitude = ISS_ALTITUDE_M;
-
-    // Restrict zoom if too many triangles visible
-    // Formula: If activeTriangles > 512, increase minAltitude
-    if (triangleCount > 512) {
-      const zoomFactor = Math.sqrt(triangleCount / 512);
-      minAltitude = ISS_ALTITUDE_M * zoomFactor;
-    }
+    const calculatedMin = altitudeToCameraDistance(GROUND_ALTITUDE_M);
+    const calculatedMax = MAX_DISTANCE;
+    
+    const maxAltitudeKm = (calculatedMax - 1.0) * 6371;
+    console.log(`📏 Zoom limits: minDistance=${calculatedMin.toFixed(6)} (${GROUND_ALTITUDE_M/1000}km), maxDistance=${calculatedMax.toFixed(6)} (${maxAltitudeKm.toFixed(1)}km)`);
+    console.log(`🌍 Earth surface at radius: 1.0000, Triangle mesh at: 0.9999`);
+    console.log(`📍 Range: ${(GROUND_ALTITUDE_M/1000).toFixed(0)}km to ${maxAltitudeKm.toFixed(0)}km altitude`);
 
     return {
-      minDistance: altitudeToCameraDistance(GROUND_ALTITUDE_M),
-      maxDistance: altitudeToCameraDistance(minAltitude),
+      minDistance: calculatedMin, // Close - 64km altitude (safe, won't go through)
+      maxDistance: calculatedMax, // Far from Earth
     };
   }, [triangleCount]);
 
-  // Update altitude display on camera change
+  // Update altitude display and dynamic rotation speed on camera change
   useFrame(() => {
     if (controlsRef.current) {
       const distance = camera.position.length();
       const altitude = cameraDistanceToAltitude(distance);
       onAltitudeChange(altitude);
+      
+      // Dynamic rotation speed: SLOWER when closer (like Google Earth)
+      // At 6371km (distance 2.0): speed = 1.0 (fast rotation)
+      // At 100m (distance 1.000016): speed = 0.000016 (extremely slow)
+      // Formula: speed scales linearly with distance from 0.05 to 1.0
+      const normalizedDistance = (distance - 1.0) / 1.0; // 0 to 1 range from surface
+      const speed = Math.max(0.05, Math.min(1.0, normalizedDistance * 1.0));
+      controlsRef.current.rotateSpeed = speed;
+      
+      // Debug
+      if (Math.random() < 0.01) { // Log occasionally
+        console.log(`📍 Altitude: ${(altitude/1000).toFixed(1)}km, Distance: ${distance.toFixed(4)}, RotateSpeed: ${speed.toFixed(3)}`);
+      }
     }
   });
 
   return (
     <OrbitControls
       ref={controlsRef}
-      enablePan={false}
-      minDistance={minDistance}
-      maxDistance={maxDistance}
-      enableDamping
-      dampingFactor={0.05}
+      enablePan={false} // Lock camera to center on Earth
+      enableZoom={true} // Enable scroll-wheel zoom
+      minDistance={minDistance} // Closest zoom - 100m altitude
+      maxDistance={maxDistance} // Farthest zoom - 6,371 km (1 Earth radius)
+      zoomSpeed={0.015} // EXTREMELY slow zoom - 10x slower than before!
+      enableDamping={true} // Smooth camera movement
+      dampingFactor={0.15} // Very strong damping for buttery smooth zoom
+      rotateSpeed={1.0} // Dynamic - adjusted per frame (slower when close)
+      minPolarAngle={0} // Allow full rotation
+      maxPolarAngle={Math.PI} // Allow full rotation
+      mouseButtons={{
+        LEFT: THREE.MOUSE.ROTATE,
+        MIDDLE: THREE.MOUSE.DOLLY, // Middle mouse for zoom
+        RIGHT: THREE.MOUSE.ROTATE
+      }}
     />
   );
 }
@@ -305,8 +509,8 @@ export default function MeshMining3D() {
   const [loading, setLoading] = useState(true);
   const [altitude, setAltitude] = useState(400000); // Start at ISS altitude
 
-  // API base URL
-  const API_BASE = 'http://localhost:5500';
+  // API base URL - use environment variable or fallback to localhost
+  const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5500';
 
   // ========================================
   // INITIALIZATION - Load Level 1 Icosahedron
@@ -319,53 +523,63 @@ export default function MeshMining3D() {
   /**
    * Load Level 1 icosahedron (20 triangles) from API
    * This is the starting state - user mines and subdivides from here
+   * 
+   * Level 1 icosahedron has exactly 20 triangles covering the entire sphere
    */
   async function loadInitialTriangles() {
     try {
-      console.log('🌍 Loading Level 1 icosahedron...');
+      console.log('🌍 Loading full Level 1 icosahedron (20 triangles)...');
       
-      // For now, we'll start with a single triangle and let user subdivide
-      // In production, you'd fetch all 20 level-1 triangles
-      // Using Budapest coordinates as example
-      const response = await fetch(`${API_BASE}/mesh/triangleAt?lat=47.4979&lon=19.0402&level=1`);
+      // Fetch all Level 1 triangles using bbox search (whole world)
+      const response = await fetch(`${API_BASE}/mesh/search?bbox=-180,-90,180,90&level=1&maxResults=20&includePolygon=true`);
       
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
       }
 
-      const response_data = await response.json();
-      const data = response_data.result || response_data; // Handle nested result
-      console.log('📍 Initial triangle:', data);
-
-      // Fetch full polygon data
-      const polygonResponse = await fetch(`${API_BASE}/mesh/polygon/${data.triangleId}`);
-      const polygon_response = await polygonResponse.json();
-      const polygonData = polygon_response.result?.polygon || polygon_response.polygon || polygon_response; // Handle nested result
-
-      // Extract vertices from polygon (first 3 points, excluding closing point)
-      const vertices = polygonData.coordinates[0].slice(0, 3) as [number, number][];
+      const responseData = await response.json();
+      const data = responseData.result || responseData;
       
-      // Compute centroid from vertices
-      const centroidLon = vertices.reduce((sum, v) => sum + v[0], 0) / 3;
-      const centroidLat = vertices.reduce((sum, v) => sum + v[1], 0) / 3;
+      if (!data.triangles || data.triangles.length === 0) {
+        throw new Error('No triangles returned from API');
+      }
+      
+      console.log(`📦 Received ${data.triangles.length} level-1 triangles`);
 
-      // Create triangle object
-      const triangle: Triangle = {
-        id: data.triangleId,
-        level: data.level,
-        centroid: [centroidLon, centroidLat],
-        vertices,
-        clicks: 0,
-        status: 'pending',
-        parent: null,
-        children: [],
-      };
+      // Convert API triangles to our Triangle format
+      const triangleMap = new Map<string, Triangle>();
+      
+      for (const apiTriangle of data.triangles) {
+        if (!apiTriangle.polygon) {
+          console.warn(`Triangle ${apiTriangle.triangleId} missing polygon data, skipping`);
+          continue;
+        }
+        
+        // Extract vertices from polygon (first 3 points, excluding closing point)
+        const vertices = apiTriangle.polygon.coordinates[0].slice(0, 3) as [number, number][];
+        
+        // Compute centroid from vertices
+        const centroidLon = vertices.reduce((sum, v) => sum + v[0], 0) / 3;
+        const centroidLat = vertices.reduce((sum, v) => sum + v[1], 0) / 3;
 
-      setTriangles(new Map([[triangle.id, triangle]]));
+        // Create triangle object
+        const triangle: Triangle = {
+          id: apiTriangle.triangleId,
+          level: 1,
+          centroid: [centroidLon, centroidLat],
+          vertices,
+          clicks: 0,
+          status: 'pending',
+          parent: null,
+          children: [],
+        };
+        
+        triangleMap.set(triangle.id, triangle);
+      }
+
+      setTriangles(triangleMap);
       setLoading(false);
-      console.log('✅ Initial triangle loaded');
-      console.log('📐 Triangle vertices:', vertices);
-      console.log('📍 Triangle centroid:', [centroidLon, centroidLat]);
+      console.log(`✅ Loaded ${triangleMap.size} triangles for Level 1 icosahedron`);
 
     } catch (error) {
       console.error('❌ Failed to load initial triangles:', error);
@@ -528,16 +742,22 @@ export default function MeshMining3D() {
   }
 
   return (
-    <div style={{ width: '100vw', height: '100vh', position: 'relative', background: '#000000' }}>
+    <div style={{ width: '100vw', height: '100vh', position: 'relative', background: '#001133' }}>
       {/* Three.js Canvas */}
       <Canvas
-        camera={{ position: [0, 0, altitudeToCameraDistance(400000)], fov: 50 }}
-        style={{ background: '#000000' }}
+        camera={{ 
+          position: [0, 0, 3.0], // Start FAR outside (3.0 = ~12 million km from Earth!)
+          fov: 50, // Field of view
+          near: 0.01, // VERY close clipping - can see objects almost touching camera
+          far: 100 // FAR clipping - can see objects very far away
+        }}
+        style={{ background: '#001133' }}
       >
-        {/* Lighting */}
-        <ambientLight intensity={0.8} />
-        <directionalLight position={[10, 10, 5]} intensity={1.5} />
-        <pointLight position={[0, 0, 3]} intensity={0.5} />
+        {/* Lighting - very bright to make faces visible */}
+        <ambientLight intensity={2.0} />
+        <directionalLight position={[10, 10, 5]} intensity={3.0} />
+        <directionalLight position={[-10, -10, -5]} intensity={2.0} />
+        <pointLight position={[0, 0, 5]} intensity={2.0} />
         
         {/* Earth sphere */}
         <EarthSphere />
@@ -588,7 +808,7 @@ export default function MeshMining3D() {
           🛰️ Altitude: {altitudeDisplay}
         </div>
         <div style={{ fontSize: '10px', color: '#888', marginTop: '5px' }}>
-          ISS (400km) → Ground (100m)
+          Range: 64 km → 3,185 km
         </div>
         
         {selectedTriangle && (

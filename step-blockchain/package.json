@@ -1,6 +1,6 @@
 {
   "name": "step-blockchain",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "description": "STEP Blockchain Protocol - Proof-of-Location consensus with icosahedron mesh system",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -12,7 +12,8 @@
     "dev": "tsx watch api/server.ts",
     "start": "node dist/api/server.js",
     "demo": "tsx core/demo.ts",
-    "seed": "tsx core/seed-mesh.ts"
+    "seed": "tsx core/seed-mesh.ts",
+    "validate:subdivision": "node scripts/validate-subdivision.js"
   },
   "keywords": [
     "blockchain",
