@@ -4,8 +4,8 @@
 
 This document describes the technical architecture of the STEP blockchain system, focusing on the Phase 2 implementation with a centralized validator.
 
-**Version:** 0.3.2  
-**Last Updated:** 2025-10-05T15:57:04.817Z
+**Version:** 0.3.3  
+**Last Updated:** 2025-10-05T16:29:46.254Z
 
 ---
 
@@ -807,6 +807,6 @@ All state updates happen inside a MongoDB transaction:
 
 ---
 
-**Last Updated:** 2025-10-05T15:57:04.817Z  
-**Version:** 0.3.2  
+**Last Updated:** 2025-10-05T16:29:46.254Z  
+**Version:** 0.3.3  
 **Phase:** 2 (Centralized Validator MVP)
