@@ -59,6 +59,9 @@ export default function MeshExplorerPage() {
 
   // Canvas dimensions
   const [canvasSize, setCanvasSize] = useState({ width: 1200, height: 600 });
+  
+  // API base URL - use environment variable or fallback to localhost
+  const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5500';
 
   /**
    * Calculate min/max zoom based on triangle visibility.
@@ -289,7 +292,7 @@ export default function MeshExplorerPage() {
       console.log(`Fetching triangles: bbox=${bboxStr}, level=${level} (base=${baseLevel}), expecting ~${expectedCount}, requesting ${maxResults}, zoom=${viewport.zoom.toFixed(2)}`);
       
       const response = await fetch(
-        `http://localhost:5500/mesh/search?bbox=${bboxStr}&level=${level}&maxResults=${maxResults}&includePolygon=true`
+        `${API_BASE}/mesh/search?bbox=${bboxStr}&level=${level}&maxResults=${maxResults}&includePolygon=true`
       );
 
       if (!response.ok) {
@@ -318,7 +321,7 @@ export default function MeshExplorerPage() {
   const fetchTrianglePolygon = useCallback(async (triangleId: string) => {
     try {
       const response = await fetch(
-        `http://localhost:5500/mesh/polygon/${encodeURIComponent(triangleId)}`
+        `${API_BASE}/mesh/polygon/${encodeURIComponent(triangleId)}`
       );
 
       if (!response.ok) {
@@ -436,7 +439,7 @@ export default function MeshExplorerPage() {
       // Query API for triangle at this point
       try {
         const response = await fetch(
-          `http://localhost:5500/mesh/triangleAt?lat=${lat}&lon=${lon}&level=${level}`
+          `${API_BASE}/mesh/triangleAt?lat=${lat}&lon=${lon}&level=${level}`
         );
 
         if (!response.ok) return;

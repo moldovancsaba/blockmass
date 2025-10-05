@@ -1,6 +1,6 @@
 {
   "name": "blockmass",
-  "version": "0.21.32",
+  "version": "0.21.39",
   "private": true,
   "scripts": {
     "predev": "npm run version:patch",
