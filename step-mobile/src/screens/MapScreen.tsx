@@ -22,7 +22,9 @@ import { StatusBar } from 'expo-status-bar';
 import * as LocationService from '../lib/location';
 import * as MeshClient from '../lib/mesh-client';
 import * as WalletLib from '../lib/wallet';
+import { collectProofData } from '../lib/proof-collector';
 import { Triangle } from '../types';
+import { ProofCollectionProgress, ProofSubmissionResponseV2 } from '../types/proof-v2';
 
 export default function MapScreen() {
   // State
@@ -32,6 +34,8 @@ export default function MapScreen() {
   const [wallet, setWallet] = useState<WalletLib.Wallet | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [mining, setMining] = useState<boolean>(false);
+  const [collectionProgress, setCollectionProgress] = useState<ProofCollectionProgress | null>(null);
+  const [lastResult, setLastResult] = useState<ProofSubmissionResponseV2 | null>(null);
 
   /**
    * Initialize app on mount:
@@ -118,13 +122,13 @@ export default function MapScreen() {
   };
 
   /**
-   * Mine button handler:
+   * Mine button handler (Phase 2.5 - ProofPayloadV2):
    * 1. Validate location accuracy
-   * 2. Build canonical proof payload (Phase 2 format)
-   * 3. Generate nonce for replay protection
-   * 4. Build canonical message and sign with EIP-191
+   * 2. Collect all proof data (location, GNSS, cell, attestation)
+   * 3. Build ProofPayloadV2 payload
+   * 4. Sign payload with wallet
    * 5. Submit to validator API
-   * 6. Display reward or error with error code
+   * 6. Display confidence score and reward
    */
   const handleMine = async () => {
     if (!currentLocation || !currentTriangle || !wallet) {
@@ -142,63 +146,108 @@ export default function MapScreen() {
 
     try {
       setMining(true);
+      setCollectionProgress(null);
+      setLastResult(null);
 
-      // Generate nonce (UUID v4) for replay protection
-      // Each proof must have unique nonce, even for same location/triangle
-      const nonce = generateUuid();
-      
-      // Get current timestamp in ISO 8601 with milliseconds
-      // Must be UTC and include milliseconds for validator
-      const timestamp = new Date().toISOString();
+      console.log('[MapScreen] Starting Phase 2.5 proof collection...');
 
-      // Build canonical proof payload (Phase 2 format)
-      // CRITICAL: This must match backend ProofPayload interface exactly
-      const payload: MeshClient.ProofPayload = {
-        version: 'STEP-PROOF-v1',
-        account: wallet.address,
-        triangleId: currentTriangle.triangleId,
-        lat: currentLocation.latitude,
-        lon: currentLocation.longitude,
-        accuracy: currentLocation.accuracy,
-        timestamp,
-        nonce,
-      };
+      // Collect all proof data (location, GNSS, cell, attestation)
+      const collectionResult = await collectProofData(
+        wallet.address,
+        currentTriangle.triangleId,
+        {
+          includeGnss: true,  // Android only, will be skipped on iOS
+          includeCell: true,
+          onProgress: (progress) => {
+            console.log(`[MapScreen] ${progress.message} (${progress.percentage}%)`);
+            setCollectionProgress(progress);
+          },
+        }
+      );
 
-      // Build canonical signable message
-      // Format: STEP-PROOF-v1|account:{account}|triangle:{id}|lat:{lat}|lon:{lon}|acc:{acc}|ts:{ts}|nonce:{nonce}
-      const message = MeshClient.buildSignableMessage(payload);
-      console.log('Signing message:', message);
+      if (!collectionResult.success || !collectionResult.payload) {
+        setMining(false);
+        setCollectionProgress(null);
+        Alert.alert(
+          'Collection Failed',
+          collectionResult.error || 'Failed to collect proof data'
+        );
+        return;
+      }
 
-      // Sign with EIP-191 (Ethereum personal_sign)
+      const payload = collectionResult.payload;
+
+      // Display warnings if any
+      if (collectionResult.warnings && collectionResult.warnings.length > 0) {
+        console.warn('[MapScreen] Collection warnings:', collectionResult.warnings);
+      }
+
+      console.log('[MapScreen] Proof data collected successfully');
+      console.log(`[MapScreen] Collection time: ${collectionResult.collectionTime}ms`);
+
+      // Sign the payload
+      setCollectionProgress({
+        step: 'signing',
+        message: 'Signing with wallet...',
+        percentage: 95,
+      });
+
+      const message = MeshClient.buildSignableMessageV2(payload);
       const signature = await WalletLib.signMessage(message);
-      console.log('Proof signed:', signature.substring(0, 20) + '...');
+      console.log('[MapScreen] Payload signed');
 
-      // Submit proof to validator
-      const result = await MeshClient.submitProof(payload, signature);
+      // Submit to validator
+      console.log('[MapScreen] Submitting to validator API...');
+      const result = await MeshClient.submitProofV2(payload, signature);
+
+      // Store result for display
+      setLastResult(result);
+      setCollectionProgress(null);
+      setMining(false);
 
       // Handle response
       if (result.ok) {
-        // Success - display reward
+        // Success - show confidence score breakdown
+        const confidenceEmoji = getConfidenceEmoji(result.confidence);
         Alert.alert(
-          '🎉 Mining Successful!',
-          `You earned ${result.reward} STEP tokens!\n\nTriangle: ${result.triangleId}\nLevel: ${result.level}\nClicks: ${result.clicks}\n\nNew Balance: ${result.balance} STEP`
+          `${confidenceEmoji} Mining Successful!`,
+          `Confidence Score: ${result.confidence}/100 (${result.confidenceLevel})\n\n` +
+          `Score Breakdown:\n` +
+          `• Signature: ${result.scores.signature}/20\n` +
+          `• GPS Accuracy: ${result.scores.gpsAccuracy}/15\n` +
+          `• Speed Gate: ${result.scores.speedGate}/10\n` +
+          `• Moratorium: ${result.scores.moratorium}/5\n` +
+          `• Attestation: ${result.scores.attestation}/25\n` +
+          `• GNSS Raw: ${result.scores.gnssRaw}/15\n` +
+          `• Cell Tower: ${result.scores.cellTower}/10\n\n` +
+          `Reward: ${result.reward} STEP\n` +
+          `New Balance: ${result.balance} STEP`
         );
       } else {
-        // Error - display with code for debugging
-        const errorMessage = getErrorMessage(result.code, result.message);
+        // Error
         Alert.alert(
           'Mining Failed',
-          errorMessage,
+          result.error || result.message || 'Unknown error',
           [{ text: 'OK' }]
         );
       }
-
-      setMining(false);
     } catch (error) {
-      console.error('Error mining:', error);
+      console.error('[MapScreen] Mining error:', error);
       setMining(false);
+      setCollectionProgress(null);
       Alert.alert('Mining Error', String(error));
     }
+  };
+
+  /**
+   * Get emoji for confidence level
+   */
+  const getConfidenceEmoji = (confidence: number): string => {
+    if (confidence >= 90) return '🏆';
+    if (confidence >= 75) return '🎉';
+    if (confidence >= 60) return '✅';
+    if (confidence >= 40) return '⚠️';
+    return '❌';
   };
   
   /**
@@ -304,6 +353,44 @@ export default function MapScreen() {
         </View>
       )}
 
+      {/* Collection Progress */}
+      {collectionProgress && (
+        <View style={styles.progressPanel}>
+          <Text style={styles.progressTitle}>📡 Collecting Proof Data</Text>
+          <View style={styles.progressBar}>
+            <View style={[styles.progressFill, { width: `${collectionProgress.percentage}%` }]} />
+          </View>
+          <Text style={styles.progressText}>{collectionProgress.message}</Text>
+          <Text style={styles.progressPercentage}>{collectionProgress.percentage}%</Text>
+        </View>
+      )}
+
+      {/* Last Result - Confidence Score Display */}
+      {lastResult && lastResult.ok && (
+        <View style={styles.resultPanel}>
+          <Text style={styles.resultTitle}>
+            {getConfidenceEmoji(lastResult.confidence)} Last Mining Result
+          </Text>
+          <View style={styles.confidenceDisplay}>
+            <Text style={styles.confidenceScore}>{lastResult.confidence}/100</Text>
+            <Text style={styles.confidenceLevel}>{lastResult.confidenceLevel}</Text>
+          </View>
+          <View style={styles.scoreBreakdown}>
+            <ScoreRow label="Signature" score={lastResult.scores.signature} max={20} />
+            <ScoreRow label="GPS Accuracy" score={lastResult.scores.gpsAccuracy} max={15} />
+            <ScoreRow label="Speed Gate" score={lastResult.scores.speedGate} max={10} />
+            <ScoreRow label="Moratorium" score={lastResult.scores.moratorium} max={5} />
+            <ScoreRow label="Attestation" score={lastResult.scores.attestation} max={25} />
+            <ScoreRow label="GNSS Raw" score={lastResult.scores.gnssRaw} max={15} />
+            <ScoreRow label="Cell Tower" score={lastResult.scores.cellTower} max={10} />
+          </View>
+          <View style={styles.rewardDisplay}>
+            <Text style={styles.rewardText}>Reward: {lastResult.reward} STEP</Text>
+            <Text style={styles.balanceText}>Balance: {lastResult.balance} STEP</Text>
+          </View>
+        </View>
+      )}
+
       {/* Action Buttons */}
       <View style={styles.actions}>
         <TouchableOpacity
@@ -328,6 +415,24 @@ export default function MapScreen() {
           </Text>
         </TouchableOpacity>
       </View>
+    </View>
+  );
+}
+
+/**
+ * Score row component for confidence breakdown
+ */
+function ScoreRow({ label, score, max }: { label: string; score: number; max: number }) {
+  const percentage = max > 0 ? (score / max) * 100 : 0;
+  const barColor = percentage >= 80 ? '#00CC00' : percentage >= 50 ? '#FFAA00' : '#CC0000';
+
+  return (
+    <View style={styles.scoreRow}>
+      <Text style={styles.scoreLabel}>{label}</Text>
+      <View style={styles.scoreBarContainer}>
+        <View style={[styles.scoreBar, { width: `${percentage}%`, backgroundColor: barColor }]} />
+      </View>
+      <Text style={styles.scoreValue}>{score}/{max}</Text>
     </View>
   );
 }
@@ -441,5 +546,116 @@ const styles = StyleSheet.create({
     color: '#CC0000',
     marginBottom: 20,
     textAlign: 'center',
+  },
+  progressPanel: {
+    backgroundColor: '#E3F2FD',
+    borderWidth: 2,
+    borderColor: '#2196F3',
+    margin: 10,
+    padding: 15,
+  },
+  progressTitle: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    marginBottom: 12,
+    color: '#1565C0',
+  },
+  progressBar: {
+    height: 20,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 2,
+    borderColor: '#2196F3',
+    marginBottom: 8,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    backgroundColor: '#2196F3',
+  },
+  progressText: {
+    fontSize: 12,
+    color: '#1565C0',
+    marginBottom: 4,
+  },
+  progressPercentage: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#1565C0',
+    textAlign: 'right',
+  },
+  resultPanel: {
+    backgroundColor: '#F1F8E9',
+    borderWidth: 2,
+    borderColor: '#8BC34A',
+    margin: 10,
+    padding: 15,
+  },
+  resultTitle: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    marginBottom: 12,
+    color: '#558B2F',
+  },
+  confidenceDisplay: {
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  confidenceScore: {
+    fontSize: 48,
+    fontWeight: 'bold',
+    color: '#558B2F',
+  },
+  confidenceLevel: {
+    fontSize: 14,
+    color: '#558B2F',
+    marginTop: 4,
+  },
+  scoreBreakdown: {
+    marginBottom: 12,
+  },
+  scoreRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  scoreLabel: {
+    fontSize: 11,
+    width: 80,
+    color: '#33691E',
+  },
+  scoreBarContainer: {
+    flex: 1,
+    height: 16,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#8BC34A',
+    marginHorizontal: 8,
+    overflow: 'hidden',
+  },
+  scoreBar: {
+    height: '100%',
+  },
+  scoreValue: {
+    fontSize: 11,
+    fontFamily: 'monospace',
+    width: 40,
+    textAlign: 'right',
+    color: '#33691E',
+  },
+  rewardDisplay: {
+    borderTopWidth: 1,
+    borderTopColor: '#8BC34A',
+    paddingTop: 12,
+    marginTop: 8,
+  },
+  rewardText: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#558B2F',
+    marginBottom: 4,
+  },
+  balanceText: {
+    fontSize: 12,
+    color: '#558B2F',
   },
 });
