@@ -50,6 +50,10 @@ import {
   isAttestationRequired,
   type AttestationResult,
 } from '../core/validator/attestation.js';
+import {
+  verifyGnssRaw,
+  type GnssResult,
+} from '../core/validator/gnss.js';
 
 const router = Router();
 
@@ -440,6 +444,7 @@ router.post('/submit', async (req: Request, res: Response) => {
     // Transparent: Users see their confidence score and rejection reasons.
     
     let attestationResult: AttestationResult | undefined;
+    let gnssResult: GnssResult | undefined;
     let confidenceScore = 0;
     let validationResults: ValidationResults;
     
@@ -501,6 +506,29 @@ router.post('/submit', async (req: Request, res: Response) => {
         message: 'Hardware attestation is required. Please update your app.',
         timestamp,
       });
+    }
+    
+    // Check GNSS raw data (Phase 2.5 Week 2 - Android only)
+    if (isProofPayloadV2(payload) && payload.gnss) {
+      try {
+        gnssResult = verifyGnssRaw(payload.gnss);
+        validationResults.gnssRawOk = gnssResult.passed;
+        validationResults.gnssRawScore = gnssResult.score;
+        
+        console.log(`[${timestamp}] GNSS verified:`, {
+          satellites: gnssResult.satelliteCount,
+          constellations: gnssResult.constellations,
+          score: gnssResult.score,
+          passed: gnssResult.passed,
+        });
+        
+        if (gnssResult.issues.length > 0) {
+          console.warn(`[${timestamp}] GNSS issues detected:`, gnssResult.issues);
+        }
+      } catch (error) {
+        console.warn(`[${timestamp}] GNSS verification error:`, error);
+        // Non-critical - continue without GNSS score
+      }
     }
     
     // Compute confidence score
