@@ -1,8 +1,8 @@
 # TASKLIST.md
 
 **Project:** STEP Blockchain Protocol  
-**Version:** 0.3.0  
-**Last Updated:** 2025-10-05T12:35:16.824Z  
+**Version:** 0.3.2  
+**Last Updated:** 2025-10-05T15:57:04.817Z  
 **Status:** Phase 2 Finalization → Phase 3 Planning
 
 ---
@@ -275,23 +275,421 @@ Sorted by priority. Tasks must include: title, owner, expected delivery date (IS
 
 ---
 
-## Phase 3 Tasks (To be detailed after Phase 2 release)
+## Critical Work Streams (Post Phase 2)
 
-### Placeholder Tasks
+### 🚨 STREAM 1: Mesh Seeding (2-3 Days) - CRITICAL FOR PRODUCTION
 
-- Consensus protocol design and selection
-- Validator node architecture
-- P2P network implementation (libp2p)
-- Gossip protocol for proof propagation
-- BFT consensus mechanism (2/3 majority voting)
-- Validator registration and discovery
-- Slashing mechanism for malicious validators
-- Stake-based validator selection
-- Fork resolution strategy
-- Performance optimization for multi-validator
-- Security audit preparation
+**Priority:** 🔴 CRITICAL  
+**Timeline:** 2-3 days  
+**Owner:** Backend Engineer  
+**Blocker:** Production deployment impossible without this
 
-**Note:** Detailed Phase 3 tasks will be added to TASKLIST.md after Phase 2 release and Phase 3 planning session.
+#### Task 1.1: Mesh Seeding Strategy Document
+- **Delivery:** Day 1 Morning
+- **Details:**
+  - Document seeding approach (level-by-level vs batch)
+  - Calculate storage requirements (Level 1-10: ~21 million triangles)
+  - Define seeding performance targets (<10 seconds per level)
+  - Plan MongoDB indexing strategy
+  - Estimate total seeding time
+- **Acceptance:** Strategy doc approved, storage allocated
+
+#### Task 1.2: Create Mesh Seeding Script
+- **Delivery:** Day 1 Afternoon
+- **Details:**
+  - Create `scripts/seed-mesh-production.js`
+  - Implement level-by-level seeding (1-10)
+  - Add progress logging (completed/total per level)
+  - Include error handling and rollback
+  - Add dry-run mode for testing
+- **Acceptance:** Script runs without errors in dry-run mode
+
+#### Task 1.3: Execute Level 1-5 Seeding (Test Run)
+- **Delivery:** Day 1 Evening
+- **Details:**
+  - Run seeding for Levels 1-5 (~21,844 triangles)
+  - Verify 2dsphere indexes created
+  - Test triangle lookup performance (<10ms)
+  - Document any issues encountered
+- **Acceptance:** Levels 1-5 seeded, indexes verified, performance acceptable
+
+#### Task 1.4: Execute Level 6-10 Seeding (Full Production)
+- **Delivery:** Day 2
+- **Details:**
+  - Run seeding for Levels 6-10 (~20.9 million triangles)
+  - Monitor MongoDB memory and CPU usage
+  - Verify database size reasonable (<50GB)
+  - Test queries across all levels
+- **Acceptance:** All 10 levels seeded, queries performant
+
+#### Task 1.5: Replace Mock Triangle Creation in api/proof.ts
+- **Delivery:** Day 3 Morning
+- **Details:**
+  - Remove lines 254-293 (mock triangle creation)
+  - Add proper "triangle not found" error handling
+  - Update error code: `TRIANGLE_NOT_FOUND`
+  - Add validation: triangle must exist before proof submission
+- **Acceptance:** No more mock triangles created, error handling works
+
+#### Task 1.6: Document Mesh Seeding Process
+- **Delivery:** Day 3 Afternoon
+- **Details:**
+  - Create `MESH_SEEDING_GUIDE.md`
+  - Document seeding commands
+  - Add troubleshooting section
+  - Document MongoDB requirements (replica set, storage)
+- **Acceptance:** Guide complete, new devs can seed mesh
+
+---
+
+### 📱 STREAM 2: Mobile App MVP (2-4 Weeks) - CRITICAL FOR END-TO-END TESTING
+
+**Priority:** 🔴 CRITICAL  
+**Timeline:** 2-4 weeks  
+**Owner:** Mobile Engineer  
+**Blocker:** Cannot validate end-to-end flow without mobile app
+
+#### Task 2.1: Mobile App Technology Selection
+- **Delivery:** Week 1, Day 1
+- **Details:**
+  - Evaluate: React Native vs Flutter vs Native
+  - Consider: WalletConnect integration, GPS access, map rendering
+  - Recommend platform with rationale
+  - Document pros/cons of each option
+- **Acceptance:** Technology selected, documented, approved
+
+#### Task 2.2: Project Setup & Wallet Integration
+- **Delivery:** Week 1, Days 2-3
+- **Details:**
+  - Initialize mobile project (React Native/Flutter)
+  - Integrate WalletConnect v2
+  - Implement Ethereum wallet connection
+  - Test signature generation (EIP-191)
+- **Acceptance:** User can connect wallet, sign test message
+
+#### Task 2.3: GPS & Location Services
+- **Delivery:** Week 1, Days 4-5
+- **Details:**
+  - Implement GPS access (iOS + Android)
+  - Get current location (lat, lon, accuracy)
+  - Handle permission requests
+  - Add location accuracy display
+  - Test on real devices (not simulator)
+- **Acceptance:** App can read GPS with <50m accuracy
+
+#### Task 2.4: Proof Submission Flow
+- **Delivery:** Week 2
+- **Details:**
+  - Build UI for proof submission button
+  - Construct ProofPayload (version, account, triangle, lat, lon, accuracy, timestamp, nonce)
+  - Generate nonce (UUID v4)
+  - Build canonical message for signing
+  - Request wallet signature (EIP-191)
+  - Submit to API: `POST /proof/submit`
+  - Handle success/error responses
+- **Acceptance:** User can submit proof, receive reward
+
+#### Task 2.5: Map View with Triangles
+- **Delivery:** Week 3
+- **Details:**
+  - Integrate map library (MapLibre, Google Maps, or Mapbox)
+  - Display user's current location
+  - Fetch nearby triangles from API (new endpoint: `GET /mesh/nearby`)
+  - Render triangles as polygons on map
+  - Show triangle level, clicks, state
+  - Highlight mineable triangles (active, moratorium passed)
+- **Acceptance:** User sees nearby triangles on map
+
+#### Task 2.6: Balance & Transaction History
+- **Delivery:** Week 4
+- **Details:**
+  - Display STEP balance (fetch from API: `GET /account/:address`)
+  - Show recent proofs (new endpoint: `GET /account/:address/proofs`)
+  - Display reward history with timestamps
+  - Add refresh functionality
+- **Acceptance:** User sees balance and transaction history
+
+#### Task 2.7: Error Handling & UX Polish
+- **Delivery:** Week 4
+- **Details:**
+  - User-friendly error messages for all error codes
+  - Loading states (proof submission, API calls)
+  - Offline mode detection
+  - GPS accuracy warnings (<50m required)
+  - Success animations
+- **Acceptance:** App handles all error scenarios gracefully
+
+#### Task 2.8: iOS & Android Testing
+- **Delivery:** Week 4
+- **Details:**
+  - Test on iOS (iPhone 12+, iOS 15+)
+  - Test on Android (Pixel 5+, Android 11+)
+  - Verify GPS accuracy
+  - Verify wallet connection
+  - Verify proof submission
+  - Document any platform-specific issues
+- **Acceptance:** App works on both platforms
+
+---
+
+### 🔗 STREAM 3: Phase 3 Multi-Validator Consensus (3-4 Months)
+
+**Priority:** 🟡 HIGH  
+**Timeline:** 3-4 months  
+**Owner:** Blockchain Engineer  
+**Dependency:** Phase 2 must be stable
+
+#### Month 1: Foundation & Design
+
+**Task 3.1.1: Complete Validator Architecture Design**
+- **Delivery:** Week 1
+- **Details:**
+  - Create `VALIDATOR_ARCHITECTURE.md`
+  - Define validator node components (consensus engine, P2P, proof validator, key mgmt, monitoring)
+  - Design hot/cold key management system
+  - Define database schema for validators, votes, evidence, slashing
+  - Document hardware requirements (4 CPU, 8GB RAM per validator)
+- **Acceptance:** Architecture doc complete, reviewed, approved
+
+**Task 3.1.2: Create TypeScript Consensus Interfaces**
+- **Delivery:** Week 2
+- **Details:**
+  - Create `core/consensus/types.ts`
+  - Implement all 6 message types from CONSENSUS_SPEC.md:
+    - ProofBatch, PreVote, PreCommit, Commit, Evidence, TimeoutMessage
+  - Add validation schemas (Zod or Joi)
+  - Add serialization/deserialization utilities
+- **Acceptance:** All interfaces defined, validated, tested
+
+**Task 3.1.3: Database Schema for Phase 3**
+- **Delivery:** Week 3
+- **Details:**
+  - Create collections: `validators`, `proof_batches`, `votes`, `evidence`, `slashing_events`
+  - Define indexes for query performance
+  - Add migration scripts
+  - Document schema in ARCHITECTURE.md
+- **Acceptance:** Schema migrated to dev MongoDB, documented
+
+**Task 3.1.4: Validator Registration API**
+- **Delivery:** Week 4
+- **Details:**
+  - `POST /validator/register` - Register new validator
+  - Validate stake (100,000 STEP minimum)
+  - Verify public key (ECDSA secp256k1)
+  - Store validator metadata (address, pubkey, stake, endpoint)
+  - Add activation delay (1 epoch)
+- **Acceptance:** Validators can register via API
+
+#### Month 2: Core Implementation
+
+**Task 3.2.1: P2P Network with libp2p**
+- **Delivery:** Weeks 5-6
+- **Details:**
+  - Integrate `libp2p` (TCP + WebSockets)
+  - Implement peer discovery (mDNS + bootstrap nodes)
+  - Add GossipSub for message propagation
+  - Implement connection management
+  - Add peer scoring
+- **Acceptance:** Validators can discover and communicate
+
+**Task 3.2.2: Consensus State Machine**
+- **Delivery:** Weeks 7-8
+- **Details:**
+  - Implement all 10 states from CONSENSUS_SPEC.md
+  - Add state transition logic
+  - Implement timeout handling (3 types)
+  - Add proposer selection (round-robin)
+  - Add vote collection and aggregation
+- **Acceptance:** State machine transitions correctly
+
+**Task 3.2.3: Proof Mempool & Distribution**
+- **Delivery:** Week 8
+- **Details:**
+  - Create proof mempool (in-memory queue)
+  - Distribute proofs to all validators via GossipSub
+  - Implement batch creation (1-1000 proofs)
+  - Add batch interval timer (10 seconds)
+- **Acceptance:** Proofs distributed to all validators
+
+#### Month 3: Integration & Testing
+
+**Task 3.3.1: BFT Voting & Finalization**
+- **Delivery:** Weeks 9-10
+- **Details:**
+  - Implement pre-vote logic (ACCEPT/REJECT)
+  - Implement pre-commit logic (commit/abort)
+  - Add quorum calculation (2/3+)
+  - Implement finalization with MongoDB transactions
+  - Add validator rewards distribution
+- **Acceptance:** 2/3+ votes finalize batch
+
+**Task 3.3.2: Slashing Mechanism**
+- **Delivery:** Week 11
+- **Details:**
+  - Implement double-signing detection
+  - Implement invalid proof acceptance detection
+  - Implement offline detection (>24 hours)
+  - Add stake slashing (10-50%)
+  - Record evidence in database
+- **Acceptance:** Malicious validators are slashed
+
+**Task 3.3.3: Local 4-7 Validator Test Network**
+- **Delivery:** Week 12
+- **Details:**
+  - Run 4-7 validator nodes locally (Docker Compose)
+  - Submit proofs, observe consensus
+  - Test Byzantine scenarios (1 malicious validator)
+  - Test network partition recovery
+  - Measure performance (throughput, finality time)
+- **Acceptance:** Consensus works with 4-7 validators
+
+#### Month 4: Hardening & Release
+
+**Task 3.4.1: Performance Optimization**
+- **Delivery:** Week 13
+- **Details:**
+  - Add Redis caching (triangle lookups)
+  - Optimize MongoDB queries (explain plans)
+  - Add batch processing (100 proofs per round)
+  - Add connection pooling
+  - Target: 10,000+ proofs/second
+- **Acceptance:** Performance targets met
+
+**Task 3.4.2: Monitoring & Observability**
+- **Delivery:** Week 14
+- **Details:**
+  - Integrate Prometheus metrics
+  - Create Grafana dashboards
+  - Add alert rules (consensus failure, validator offline)
+  - Add health check endpoints
+- **Acceptance:** Monitoring operational
+
+**Task 3.4.3: Security Audit Preparation**
+- **Delivery:** Week 15
+- **Details:**
+  - Document threat model
+  - List attack vectors
+  - Create security testing checklist
+  - Run penetration tests
+  - Prepare for external audit
+- **Acceptance:** Security audit package complete
+
+**Task 3.4.4: Migration & v0.4.0 Release**
+- **Delivery:** Week 16
+- **Details:**
+  - Create migration guide (Phase 2 → Phase 3)
+  - Test migration on staging
+  - Update all documentation
+  - Version bump to v0.4.0
+  - Git tag and release
+- **Acceptance:** v0.4.0 released, multi-validator live
+
+---
+
+### 🛠️ STREAM 4: Production Operations (Ongoing)
+
+**Priority:** 🟡 HIGH  
+**Timeline:** Ongoing (start Week 1)  
+**Owner:** DevOps Engineer  
+**Dependency:** Required before production launch
+
+#### Task 4.1: Environment Configuration
+- **Delivery:** Week 1, Day 1
+- **Details:**
+  - Create `.env.example` with all required variables:
+    - MONGODB_URI, NODE_ENV, PORT, LOG_LEVEL
+    - GPS_MAX_ACCURACY_M, PROOF_SPEED_LIMIT_MPS, PROOF_MORATORIUM_MS
+  - Document each variable with examples
+  - Add to README.md
+- **Acceptance:** `.env.example` complete, documented
+
+#### Task 4.2: Structured Logging
+- **Delivery:** Week 1, Days 2-3
+- **Details:**
+  - Integrate `winston` or `pino`
+  - Add log levels (debug, info, warn, error)
+  - Add request correlation IDs
+  - Log to stdout/stderr (container-friendly)
+  - Replace all console.log statements
+- **Acceptance:** Structured logging operational
+
+#### Task 4.3: Error Tracking
+- **Delivery:** Week 1, Days 4-5
+- **Details:**
+  - Integrate Sentry or Rollbar
+  - Add error context (user, proof, transaction)
+  - Set up alerts (Slack, PagerDuty)
+  - Test error capture
+- **Acceptance:** Errors tracked in Sentry
+
+#### Task 4.4: Deployment Documentation
+- **Delivery:** Week 2
+- **Details:**
+  - Create `DEPLOYMENT_GUIDE.md`
+  - Document MongoDB Atlas setup (replica set, M10+)
+  - Document Node.js deployment (PM2, Docker, K8s)
+  - Add deployment checklist
+  - Document rollback procedure
+- **Acceptance:** Guide complete, tested on staging
+
+#### Task 4.5: CI/CD Pipeline
+- **Delivery:** Week 3
+- **Details:**
+  - Set up GitHub Actions or GitLab CI
+  - Add build step (TypeScript compilation)
+  - Add manual validation step (run test scripts)
+  - Add deployment step (staging, then production)
+  - Add smoke tests
+- **Acceptance:** CI/CD pipeline operational
+
+#### Task 4.6: Monitoring Setup
+- **Delivery:** Week 4
+- **Details:**
+  - Set up uptime monitoring (UptimeRobot, Pingdom)
+  - Configure application monitoring (New Relic, Datadog)
+  - Set up log aggregation (CloudWatch, Splunk)
+  - Create alert rules (API down, DB slow, errors spike)
+- **Acceptance:** Monitoring alerts working
+
+#### Task 4.7: Backup & Recovery Strategy
+- **Delivery:** Week 5
+- **Details:**
+  - Configure MongoDB daily backups (30-day retention)
+  - Test backup restoration
+  - Document recovery procedure (RTO: 4 hours, RPO: 1 hour)
+  - Create disaster recovery playbook
+- **Acceptance:** Backups tested, DR plan documented
+
+#### Task 4.8: Security Hardening
+- **Delivery:** Week 6
+- **Details:**
+  - Add rate limiting (per IP, per account)
+  - Configure DDoS protection (Cloudflare, AWS Shield)
+  - Add input validation (all API endpoints)
+  - Set up secrets management (AWS Secrets Manager, Vault)
+  - Configure firewall rules
+- **Acceptance:** Security measures operational
+
+#### Task 4.9: Load Testing
+- **Delivery:** Week 7
+- **Details:**
+  - Create load test scenarios (k6, JMeter, Artillery)
+  - Test 1,000 proofs/second sustained
+  - Test 10,000 proofs/second burst
+  - Identify bottlenecks
+  - Document performance baseline
+- **Acceptance:** Load tests complete, bottlenecks identified
+
+#### Task 4.10: Incident Response Playbook
+- **Delivery:** Week 8
+- **Details:**
+  - Create `INCIDENT_RESPONSE.md`
+  - Define severity levels (P0-P4)
+  - Document escalation procedures
+  - Create runbooks for common issues:
+    - API down, DB connection lost, High error rate, Slow responses
+  - Add on-call rotation (if applicable)
+- **Acceptance:** Playbook complete, team trained
 
 ---
 

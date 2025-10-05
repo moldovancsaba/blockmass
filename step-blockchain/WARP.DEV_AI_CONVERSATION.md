@@ -409,3 +409,228 @@ Phase 3 execution begins with Month 1, Week 1:
 
 **Status:** Ready to Begin Phase 3 Implementation  
 **Est. Completion:** Q1 2026
+
+---
+
+## Phase 3 Implementation: Month 1, Week 1 - Consensus Protocol Design
+
+**Timestamp Start:** 2025-10-05T14:56:15.000Z  
+**Version:** v0.3.1 (development cycle)
+
+### Objectives
+
+1. Research existing BFT consensus protocols (Tendermint, HotStuff, PBFT)
+2. Design custom PoLC-BFT (Proof-of-Location-Click BFT) consensus
+3. Define message types, state machine, voting rules
+4. Document fork resolution mechanisms
+5. Create comprehensive CONSENSUS_SPEC.md
+
+### Execution Summary
+
+**Tasks Completed:**
+
+1. ✅ **Version Bump to v0.3.1**
+   - Updated package.json: v0.3.0 → v0.3.1
+   - Ran version-sync.js: 6 files synchronized
+   - Timestamp: 2025-10-05T14:55:58.864Z
+
+2. ✅ **BFT Protocol Research**
+   - Analyzed Tendermint BFT: round-based voting with pre-vote/pre-commit phases
+   - Studied HotStuff: 3-phase commit for safety and liveness
+   - Reviewed PBFT: view-change mechanisms and 2/3+ quorum requirements
+   - Examined Casper FFG: finality gadget concepts and accountability
+   - Identified key patterns applicable to location proof validation
+
+3. ✅ **PoLC-BFT Protocol Design**
+   - **Consensus Phases:**
+     - Phase 1: Pre-Vote (validators vote ACCEPT/REJECT on ProofBatch)
+     - Phase 2: Pre-Commit (validators commit to finalization)
+     - Phase 3: Commit (execute atomic state changes)
+   - **Proposer Selection:** Deterministic round-robin (no randomness)
+   - **Byzantine Tolerance:** f = (N-1)/3 malicious validators
+   - **Voting Threshold:** 2/3+ (2f+1) for finality
+   - **Batch Processing:** Groups of 1-1000 proofs per consensus round
+
+4. ✅ **Message Type Definitions**
+   - ProofBatch: Proposer bundles proofs for consensus
+   - PreVote: Validator signals ACCEPT/REJECT
+   - PreCommit: Validator commits to finalization
+   - Commit: Broadcast finalized batch to network
+   - Evidence: Report Byzantine behavior (double-signing, etc.)
+   - TimeoutMessage: Signal timeout and trigger view change
+
+5. ✅ **Consensus State Machine**
+   - 10 states defined: IDLE, PROPOSE, PRE_VOTE, PRE_VOTE_WAIT, PRE_COMMIT, PRE_COMMIT_WAIT, COMMIT, TIMEOUT_*
+   - Complete state transition diagram documented
+   - Each state with clear entry/exit conditions
+
+6. ✅ **Voting Rules Specification**
+   - Pre-Vote validation criteria (signature, proofs, batch size, proposer authorization)
+   - Pre-Commit commitment criteria (2/3+ threshold)
+   - Quorum calculation: ceil(2N/3)
+   - Vote signing with EIP-191
+
+7. ✅ **Fork Resolution Mechanisms**
+   - Conflicting proposals detection
+   - Double-signing detection and slashing (50% stake)
+   - Network partition handling
+   - Chain continuity via previousBatchHash
+
+8. ✅ **Timeout Mechanisms**
+   - Pre-Vote timeout: 3 seconds
+   - Pre-Commit timeout: 2 seconds
+   - Proposer timeout: 5 seconds
+   - Timeout aggregation (2/3+ threshold)
+   - Round increment and proposer rotation on timeout
+
+9. ✅ **Safety and Liveness Proofs**
+   - Safety: No two conflicting batches can finalize (informal proof)
+   - Liveness: Network eventually finalizes batches (informal proof)
+   - Assumptions documented (partial synchrony, Byzantine tolerance)
+
+10. ✅ **Edge Cases Documentation**
+    - All proofs invalid in batch
+    - Partial proof invalidity
+    - Validator set changes during consensus
+    - Simultaneous timeouts
+    - Byzantine proposer
+    - Network partition recovery
+
+11. ✅ **CONSENSUS_SPEC.md Created**
+    - **Total Lines:** 1,109
+    - **Sections:** 16 major sections
+    - **Table of Contents:** Complete with anchor links
+    - **Protocol Overview:** High-level flow diagram
+    - **Parameters:** Network, timing, batch, stake parameters
+    - **Validator Set Management:** Registration, activation, deactivation
+    - **Message Types:** 6 complete TypeScript interfaces
+    - **State Machine:** Full state diagram and descriptions
+    - **Consensus Rounds:** Structure, numbering, lifecycle
+    - **Proposer Selection:** Deterministic algorithm
+    - **Voting Rules:** Pre-vote and pre-commit validation
+    - **Finality:** Definition, process, chain continuity
+    - **Fork Resolution:** Prevention and detection mechanisms
+    - **Timeouts:** Types, handling, aggregation
+    - **Safety/Liveness:** Informal proofs
+    - **Edge Cases:** 6 scenarios with resolutions
+    - **References:** Tendermint, HotStuff, PBFT, Casper FFG
+
+### Key Technical Decisions
+
+**1. Why PoLC-BFT (Custom Consensus)?**
+- Optimized for location proof validation (not general transactions)
+- Simplified proposer selection (deterministic, no randomness)
+- Batch-oriented processing (throughput optimization)
+- Integrated with geospatial validation logic
+
+**2. Why Deterministic Round-Robin Proposer Selection?**
+- Simple: All validators compute same proposer for any round
+- Fair: Each validator gets equal opportunity
+- Predictable: No leader election overhead
+- Byzantine-resistant: Cannot manipulate proposer order
+
+**3. Why 2/3+ Voting Threshold?**
+- Standard BFT requirement: >2f votes where f = (N-1)/3
+- Ensures at least f+1 honest validators agree
+- Prevents malicious validators from controlling consensus
+- Provides both safety (no conflicting finalities) and liveness
+
+**4. Why 3-Phase Consensus?**
+- Pre-Vote: Validators independently validate proposals
+- Pre-Commit: Safety lock before finalization (prevents equivocation)
+- Commit: Execute state changes atomically
+- Inspired by Tendermint/HotStuff, proven in production
+
+**5. Why Batch Processing?**
+- Throughput: Process 100-1000 proofs per consensus round
+- Efficiency: Amortize consensus overhead across multiple proofs
+- Latency: Balance between throughput and finality time
+- Target: 10,000+ proofs/second at scale
+
+### Consensus Parameters Finalized
+
+| Parameter | Value | Rationale |
+|-----------|-------|----------|
+| **Validator Count (MVP)** | 4-7 | Minimum for BFT (3f+1, f=1) |
+| **Validator Count (Target)** | 10-50 | Production network size |
+| **Byzantine Tolerance (f)** | (N-1)/3 | Standard BFT assumption |
+| **Voting Threshold** | 2/3+ (2f+1) | Safety requirement |
+| **Batch Interval** | 10 seconds | Time to accumulate proofs |
+| **Pre-Vote Timeout** | 3 seconds | Validator response time |
+| **Pre-Commit Timeout** | 2 seconds | Finalization time |
+| **Proposer Timeout** | 5 seconds | Fallback to next proposer |
+| **Batch Size (target)** | 100 proofs | Balance throughput/latency |
+| **Batch Size (max)** | 1000 proofs | Prevent oversized batches |
+| **Minimum Stake** | 100,000 STEP | Sybil resistance |
+| **Slashing (Double-Sign)** | 50% | Severe penalty |
+| **Slashing (Invalid Proof)** | 30% | Accept bad proofs penalty |
+| **Slashing (Offline >24h)** | 10% | Encourage uptime |
+
+### Performance Targets
+
+**Finality Time: <3 seconds**
+- Proof validation: <500ms per validator
+- Pre-vote round: <1 second (parallel)
+- Pre-commit round: <500ms
+- Commit and broadcast: <500ms
+- Buffer: 500ms
+- **Total: <3 seconds**
+
+**Proof Throughput: 10,000/second**
+- Batch processing: 100 proofs per batch
+- Parallel validation: All validators validate independently
+- Consensus overhead: ~5 seconds per batch
+- Target: 100 proofs / 5 seconds = 20 proofs/sec/batch
+- With 500+ batches in parallel: 10,000+ proofs/sec
+
+### Deliverables
+
+**New Files:**
+- `CONSENSUS_SPEC.md` (1,109 lines) - Complete PoLC-BFT specification
+
+**Updated Files:**
+- `package.json` - Version v0.3.1
+- `README.md` - Version v0.3.1
+- `ARCHITECTURE.md` - Version v0.3.1
+- `ROADMAP.md` - Version v0.3.1
+- `TASKLIST.md` - Version v0.3.1
+- `LEARNINGS.md` - Version v0.3.1
+- `RELEASE_NOTES.md` - Version v0.3.1
+
+### Next Steps (Week 1-2 Continuation)
+
+**Immediate:**
+1. Create TypeScript interfaces for all consensus message types
+2. Design validator node component architecture
+3. Define database schema for:
+   - Validator registrations
+   - ProofBatch storage
+   - Vote collection
+   - Evidence records
+   - Slashing events
+4. Create VALIDATOR_ARCHITECTURE.md
+
+**Following (Week 3-4):**
+5. Design hot/cold key management system
+6. Define stake and unstaking mechanisms
+7. Create validator health check specifications
+8. Plan P2P network topology (libp2p integration)
+
+### Status
+
+**Week 1 Progress:** 70% Complete  
+**Consensus Spec:** ✅ Complete  
+**Message Types:** ✅ Defined  
+**State Machine:** ✅ Documented  
+**Voting Rules:** ✅ Specified  
+**Fork Resolution:** ✅ Designed  
+**Safety Proofs:** ✅ Informal proofs complete  
+
+**Remaining (Week 1-2):**
+- Validator architecture design
+- Database schema updates
+- VALIDATOR_ARCHITECTURE.md creation
+
+**Timestamp End:** 2025-10-05T15:02:37.000Z  
+**Duration:** ~6 minutes  
+**Lines Written:** 1,109 (CONSENSUS_SPEC.md)

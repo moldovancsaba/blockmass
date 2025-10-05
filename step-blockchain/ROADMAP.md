@@ -4,8 +4,8 @@
 
 This document outlines the phased development approach for the STEP blockchain, from MVP to production-ready decentralized system.
 
-**Version:** 0.3.0  
-**Last Updated:** 2025-10-05T12:35:16.824Z
+**Version:** 0.3.2  
+**Last Updated:** 2025-10-05T15:57:04.817Z
 
 ---
 
@@ -117,11 +117,16 @@ Build the world's first proof-of-location blockchain where mining happens throug
 
 ### 📅 Phase 3: Multi-Validator Consensus
 
-**Timeline:** Q1 2026  
-**Status:** Planned  
+**Timeline:** Q1 2026 (4 months)  
+**Status:** Week 1 Design Complete (70%)  
 **Priority:** High
 
 **Goal:** Decentralize validation with BFT consensus mechanism.
+
+**Current Status:**
+- ✅ PoLC-BFT Consensus Specification complete (CONSENSUS_SPEC.md, 1,109 lines)
+- ⏳ Validator architecture design (VALIDATOR_ARCHITECTURE.md)
+- ⏳ Implementation starting Month 1, Week 2
 
 #### Key Features
 
@@ -164,6 +169,197 @@ Build the world's first proof-of-location blockchain where mining happens throug
 - Handles 10,000 proofs/second
 - Byzantine fault tolerance (up to 1/3 malicious)
 - No single point of failure
+
+---
+
+## 🚨 Critical Work Streams (Before Phase 4)
+
+### Stream 1: Mesh Seeding (2-3 Days) - CRITICAL
+
+**Priority:** 🔴 BLOCKING PRODUCTION  
+**Timeline:** 2-3 days  
+**Owner:** Backend Engineer
+
+**Status:** Not Started  
+**Blocker:** Production deployment impossible without this
+
+**Deliverables:**
+1. Mesh seeding strategy document (Day 1 AM)
+2. Seeding script `scripts/seed-mesh-production.js` (Day 1 PM)
+3. Level 1-5 seeding execution and validation (Day 1 Evening)
+4. Level 6-10 seeding execution (~21M triangles) (Day 2)
+5. Remove mock triangle creation from `api/proof.ts` (Day 3 AM)
+6. MESH_SEEDING_GUIDE.md documentation (Day 3 PM)
+
+**Technical Details:**
+- Seed Levels 1-10 (~21 million triangles total)
+- Verify 2dsphere indexes created automatically
+- Test lookup performance (<10ms per query)
+- MongoDB storage estimate: ~50GB
+- Replace mock triangle creation (lines 254-293 in api/proof.ts)
+
+**Success Criteria:**
+- All Level 1-10 triangles in MongoDB
+- Triangle lookups performant (<10ms)
+- No more mock triangle creation
+- Seeding guide documented
+
+---
+
+### Stream 2: Mobile App MVP (2-4 Weeks) - CRITICAL
+
+**Priority:** 🔴 BLOCKING END-TO-END TESTING  
+**Timeline:** 2-4 weeks  
+**Owner:** Mobile Engineer
+
+**Status:** Not Started  
+**Blocker:** Cannot validate end-to-end flow without mobile app
+
+**Technology Decision:**
+- Recommended: React Native (mature WalletConnect support)
+- Alternative: Flutter (better performance, less wallet support)
+- Native: Best performance, 2x development time
+
+**Phase 1 (Week 1): Foundation**
+- Technology selection and project setup (Day 1)
+- WalletConnect v2 integration (Days 2-3)
+- GPS/location services (iOS + Android) (Days 4-5)
+
+**Phase 2 (Week 2): Core Features**
+- Proof submission flow (full week)
+  - ProofPayload construction
+  - EIP-191 signature generation
+  - API integration (`POST /proof/submit`)
+  - Success/error handling
+
+**Phase 3 (Week 3): Map & Visualization**
+- Map integration (MapLibre or Mapbox)
+- Display nearby triangles
+- Render triangle polygons
+- Highlight mineable triangles
+
+**Phase 4 (Week 4): Polish & Testing**
+- Balance and transaction history
+- Error handling and UX polish
+- iOS and Android testing
+- Bug fixes and optimization
+
+**Success Criteria:**
+- User can connect Ethereum wallet
+- User can submit location proof
+- User receives STEP rewards
+- Map shows nearby triangles
+- Works on iOS and Android
+
+---
+
+### Stream 3: Phase 3 Implementation (3-4 Months)
+
+**Priority:** 🟡 HIGH (After Phase 2 stable)  
+**Timeline:** 3-4 months (16 weeks)  
+**Owner:** Blockchain Engineer
+
+**Status:** Week 1 Design Complete (70%)  
+**Next:** Validator architecture (Week 2)
+
+**Month 1: Foundation (Weeks 1-4)**
+- Validator architecture design (Week 1) ✅ 70% complete
+- TypeScript consensus interfaces (Week 2)
+- Database schema for Phase 3 (Week 3)
+- Validator registration API (Week 4)
+
+**Month 2: Core Implementation (Weeks 5-8)**
+- P2P network with libp2p (Weeks 5-6)
+- Consensus state machine (Weeks 7-8)
+- Proof mempool and distribution (Week 8)
+
+**Month 3: Integration & Testing (Weeks 9-12)**
+- BFT voting and finalization (Weeks 9-10)
+- Slashing mechanism (Week 11)
+- Local 4-7 validator test network (Week 12)
+
+**Month 4: Hardening & Release (Weeks 13-16)**
+- Performance optimization (Week 13)
+- Monitoring and observability (Week 14)
+- Security audit preparation (Week 15)
+- Migration and v0.4.0 release (Week 16)
+
+**Technologies:**
+- libp2p (P2P networking)
+- GossipSub (message propagation)
+- Redis (caching layer)
+- Prometheus + Grafana (monitoring)
+
+**Success Criteria:**
+- 4-7 validators running locally
+- BFT consensus functional (2/3+ voting)
+- 1,000+ proofs/second (MVP)
+- <3 second finality
+- Slashing mechanism operational
+
+---
+
+### Stream 4: Production Operations (Ongoing)
+
+**Priority:** 🟡 HIGH (Starts immediately)  
+**Timeline:** Ongoing (8+ weeks)  
+**Owner:** DevOps Engineer
+
+**Status:** Not Started  
+**Blocker:** Required before production launch
+
+**Week 1: Foundation**
+- `.env.example` template (Day 1)
+- Structured logging (winston/pino) (Days 2-3)
+- Error tracking (Sentry/Rollbar) (Days 4-5)
+
+**Week 2: Documentation**
+- DEPLOYMENT_GUIDE.md
+- MongoDB Atlas setup instructions
+- Node.js deployment options (PM2, Docker, K8s)
+- Rollback procedures
+
+**Week 3: CI/CD**
+- GitHub Actions or GitLab CI setup
+- Build + validation + deployment pipeline
+- Staging and production environments
+- Smoke tests
+
+**Week 4: Monitoring**
+- Uptime monitoring (UptimeRobot, Pingdom)
+- Application monitoring (New Relic, Datadog)
+- Log aggregation (CloudWatch, Splunk)
+- Alert rules (API down, errors spike)
+
+**Week 5: Backup & Recovery**
+- MongoDB daily backups (30-day retention)
+- Backup restoration testing
+- Disaster recovery playbook (RTO: 4h, RPO: 1h)
+
+**Week 6: Security**
+- Rate limiting (per IP, per account)
+- DDoS protection (Cloudflare, AWS Shield)
+- Input validation (all endpoints)
+- Secrets management (AWS Secrets Manager)
+
+**Week 7: Load Testing**
+- Load test scenarios (k6, JMeter)
+- 1,000 proofs/sec sustained test
+- 10,000 proofs/sec burst test
+- Bottleneck identification
+
+**Week 8: Incident Response**
+- INCIDENT_RESPONSE.md playbook
+- Severity levels (P0-P4)
+- Escalation procedures
+- Runbooks for common issues
+
+**Success Criteria:**
+- Production deployment automated
+- Monitoring and alerts operational
+- Security hardening complete
+- Load testing baseline established
+- Incident response plan documented
 
 ---
 
@@ -497,6 +693,6 @@ STEP is currently in early development. Community contributions welcome starting
 
 ---
 
-**Last Updated:** 2025-10-05T12:35:16.824Z  
+**Last Updated:** 2025-10-05T15:57:04.817Z  
 **Current Phase:** 2 (Centralized Validator MVP)  
 **Next Milestone:** Complete Phase 2 implementation

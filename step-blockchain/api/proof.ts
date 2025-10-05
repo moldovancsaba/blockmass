@@ -23,8 +23,8 @@
 
 import express, { Router, Request, Response } from 'express';
 import { Triangle, TriangleEvent, Account, getOrCreateAccount, updateBalance } from '../core/state/schemas.js';
-import type { ProofPayload } from '../core/validator/signature.js';
-import { verifySignature } from '../core/validator/signature.js';
+import type { ProofPayload, ProofPayloadV2 } from '../core/validator/signature.js';
+import { verifySignature, isProofPayloadV2 } from '../core/validator/signature.js';
 import {
   isPointInTriangle,
   validateGpsAccuracy,
@@ -38,6 +38,18 @@ import {
   encodeTriangleId 
 } from '../core/mesh/addressing.js';
 import { triangleIdToPolygon, triangleIdToCentroid } from '../core/mesh/polygon.js';
+import {
+  computeConfidence,
+  shouldAccept,
+  getRejectionReasons,
+  getConfidenceLevel,
+  type ValidationResults,
+} from '../core/validator/confidence.js';
+import {
+  verifyAttestation,
+  isAttestationRequired,
+  type AttestationResult,
+} from '../core/validator/attestation.js';
 
 const router = Router();
 
@@ -54,12 +66,68 @@ const ErrorCode = {
   BAD_SIGNATURE: 'BAD_SIGNATURE',
   OUT_OF_BOUNDS: 'OUT_OF_BOUNDS',
   LOW_GPS_ACCURACY: 'LOW_GPS_ACCURACY',
+  LOW_CONFIDENCE: 'LOW_CONFIDENCE',  // Phase 2.5: Confidence score below threshold
+  ATTESTATION_REQUIRED: 'ATTESTATION_REQUIRED',  // Phase 2.5: Missing attestation
+  ATTESTATION_FAILED: 'ATTESTATION_FAILED',  // Phase 2.5: Attestation verification failed
   NONCE_REPLAY: 'NONCE_REPLAY',
   TOO_FAST: 'TOO_FAST',
   MORATORIUM: 'MORATORIUM',
   TRIANGLE_NOT_FOUND: 'TRIANGLE_NOT_FOUND',
   INTERNAL_ERROR: 'INTERNAL_ERROR',
 } as const;
+
+/**
+ * Extract location data from proof payload (v1 or v2)
+ * 
+ * Why: ProofPayloadV2 restructures location into a nested object.
+ * This helper provides backward compatibility for v1 while supporting v2.
+ * 
+ * @param payload - Proof payload (v1 or v2)
+ * @returns Location data (lat, lon, accuracy)
+ */
+function extractLocation(payload: ProofPayload | ProofPayloadV2): {
+  lat: number;
+  lon: number;
+  accuracy: number;
+} {
+  if (isProofPayloadV2(payload)) {
+    return {
+      lat: payload.location.lat,
+      lon: payload.location.lon,
+      accuracy: payload.location.accuracy,
+    };
+  } else {
+    return {
+      lat: payload.lat,
+      lon: payload.lon,
+      accuracy: payload.accuracy,
+    };
+  }
+}
+
+/**
+ * Detect platform from proof payload
+ * 
+ * Why: ProofPayloadV2 includes device.os field.
+ * Used to route attestation verification to correct platform (Android/iOS).
+ * 
+ * @param payload - Proof payload (v1 or v2)
+ * @returns Platform ('android', 'ios', or 'unknown')
+ */
+function detectPlatform(payload: ProofPayload | ProofPayloadV2): 'android' | 'ios' | 'unknown' {
+  if (!isProofPayloadV2(payload)) {
+    return 'unknown';
+  }
+  
+  const os = payload.device.os.toLowerCase();
+  if (os.includes('android')) {
+    return 'android';
+  } else if (os.includes('ios')) {
+    return 'ios';
+  } else {
+    return 'unknown';
+  }
+}
 
 /**
  * Calculate reward for a given triangle level.
@@ -148,17 +216,15 @@ router.post('/submit', async (req: Request, res: Response) => {
       });
     }
     
-    // Validate payload fields
-    const {
-      version,
-      account,
-      triangleId,
-      lat,
-      lon,
-      accuracy,
-      timestamp: proofTimestamp,
-      nonce,
-    } = payload as ProofPayload;
+    // Validate payload fields (support v1 and v2)
+    const version = payload.version;
+    const account = payload.account;
+    const triangleId = payload.triangleId;
+    const proofTimestamp = payload.timestamp;
+    const nonce = payload.nonce;
+    
+    // Extract location (works for v1 and v2)
+    const { lat, lon, accuracy } = extractLocation(payload);
     
     if (
       !version ||
@@ -178,7 +244,8 @@ router.post('/submit', async (req: Request, res: Response) => {
       });
     }
     
-    if (version !== 'STEP-PROOF-v1') {
+    // Support both v1 and v2 payloads
+    if (version !== 'STEP-PROOF-v1' && version !== 'STEP-PROOF-v2') {
       return res.status(400).json({
         ok: false,
         code: ErrorCode.INVALID_PAYLOAD,
@@ -366,7 +433,107 @@ router.post('/submit', async (req: Request, res: Response) => {
     }
     
     // ========================================================================
-    // Step 9: Calculate reward
+    // Step 9: Phase 2.5 - Confidence Scoring (Anti-Spoofing)
+    // ========================================================================
+    // Why: Replace binary accept/reject with nuanced 0-100 confidence score.
+    // Combines multiple signals: signature, attestation, GPS, GNSS, cell, etc.
+    // Transparent: Users see their confidence score and rejection reasons.
+    
+    let attestationResult: AttestationResult | undefined;
+    let confidenceScore = 0;
+    let validationResults: ValidationResults;
+    
+    // Basic validation results (always present)
+    validationResults = {
+      signatureValid: true,  // Already verified in Step 3
+      gpsAccuracyOk: true,  // Already verified in Step 2
+      speedGateOk: true,  // Already verified in Step 8
+      moratoriumOk: true,  // Already verified in Step 8
+      attestationValid: false,  // Will check below
+      gnssRawOk: false,  // Phase 2.5 Week 2
+      cellTowerOk: false,  // Phase 2.5 Week 3
+      wifiOk: false,  // Phase 2.5 Week 3 (optional)
+      witnessValid: false,  // Phase 3
+    };
+    
+    // Check attestation (Phase 2.5 Week 1)
+    if (isProofPayloadV2(payload) && payload.attestation) {
+      const platform = detectPlatform(payload);
+      
+      // Skip attestation verification if platform is unknown (v2 payload but no device.os)
+      if (platform === 'unknown') {
+        console.warn(`[${timestamp}] Unknown platform, skipping attestation for ${account}`);
+      } else {
+        const expectedId = platform === 'android'
+          ? process.env.ANDROID_PACKAGE_NAME || 'com.stepblockchain.app'
+          : process.env.IOS_BUNDLE_ID || 'com.stepblockchain.app';
+        
+        try {
+          attestationResult = await verifyAttestation(
+            payload.attestation,
+            platform,
+            expectedId
+          );
+          validationResults.attestationValid = attestationResult.passed;
+          
+          console.log(`[${timestamp}] Attestation verified:`, {
+            platform,
+            passed: attestationResult.passed,
+            score: attestationResult.score,
+          });
+        } catch (error) {
+          console.warn(`[${timestamp}] Attestation verification error:`, error);
+          attestationResult = {
+            score: 0,
+            passed: false,
+            platform,
+            error: error instanceof Error ? error.message : 'Unknown error',
+            verifiedAt: new Date().toISOString(),
+          };
+        }
+      }
+    } else if (isAttestationRequired()) {
+      // Attestation required but missing
+      console.warn(`[${timestamp}] Attestation required but missing for ${account}`);
+      return res.status(422).json({
+        ok: false,
+        code: ErrorCode.ATTESTATION_REQUIRED,
+        message: 'Hardware attestation is required. Please update your app.',
+        timestamp,
+      });
+    }
+    
+    // Compute confidence score
+    const confidenceResult = computeConfidence(validationResults);
+    confidenceScore = confidenceResult.total;
+    
+    console.log(`[${timestamp}] Confidence score: ${confidenceScore}/100`, {
+      level: getConfidenceLevel(confidenceScore),
+      scores: confidenceResult,
+    });
+    
+    // Check acceptance threshold
+    const accepted = shouldAccept(confidenceResult);
+    
+    if (!accepted) {
+      const reasons = getRejectionReasons(confidenceResult);
+      console.warn(`[${timestamp}] Proof rejected (confidence ${confidenceScore}/100):`, reasons);
+      
+      return res.status(422).json({
+        ok: false,
+        code: ErrorCode.LOW_CONFIDENCE,
+        message: `Confidence score too low (${confidenceScore}/100). Reasons: ${reasons.join('; ')}`,
+        confidence: confidenceScore,
+        confidenceLevel: getConfidenceLevel(confidenceScore),
+        reasons,
+        timestamp,
+      });
+    }
+    
+    console.log(`[${timestamp}] Proof accepted (confidence ${confidenceScore}/100)`);
+    
+    // ========================================================================
+    // Step 10: Calculate reward
     // ========================================================================
     
     const reward = calculateReward(triangle.level);
@@ -519,6 +686,7 @@ router.post('/submit', async (req: Request, res: Response) => {
     
     console.log(`[${timestamp}] Proof validated: ${triangleId} by ${account}`);
     
+    // Return success with confidence score (Phase 2.5)
     return res.status(200).json({
       ok: true,
       reward,
@@ -527,6 +695,9 @@ router.post('/submit', async (req: Request, res: Response) => {
       level: triangle.level,
       clicks: triangle.clicks,
       balance,
+      confidence: confidenceScore,  // Phase 2.5: Confidence score (0-100)
+      confidenceLevel: getConfidenceLevel(confidenceScore),  // Phase 2.5: UI display label
+      scores: confidenceResult,  // Phase 2.5: Component scores for debugging
       processedAt: timestamp,
     });
     
