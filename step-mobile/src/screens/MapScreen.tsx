@@ -209,9 +209,12 @@ export default function MapScreen() {
         percentage: 95,
       });
 
+      // Build signable message and sign
       const message = MeshClient.buildSignableMessageV2(payload);
+      console.log('[MapScreen] Signing message (first 100 chars):', message.substring(0, 100));
       const signature = await WalletLib.signMessage(message);
-      console.log('[MapScreen] Payload signed');
+      console.log('[MapScreen] Payload signed:', signature.substring(0, 20) + '...');
+      console.log('[MapScreen] Full payload structure:', JSON.stringify(payload, null, 2));
 
       // Submit to validator (or use test mode, or compare both)
       console.log(`[MapScreen] Submitting to validator API... (Test Mode: ${testMode ? 'ON' : 'OFF'}, Compare: ${compareMode ? 'ON' : 'OFF'})`);
