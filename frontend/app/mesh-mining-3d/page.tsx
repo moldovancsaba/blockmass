@@ -361,15 +361,13 @@ function SphericalTriangle({ triangle, onMine, isSelected }: TriangleComponentPr
       {/* TRUE CURVED EDGES - Great circle arcs */}
       {curvedEdges.map((edgePoints, edgeIndex) => {
         const lineGeometry = new THREE.BufferGeometry().setFromPoints(edgePoints);
-        return (
-          <line key={edgeIndex} geometry={lineGeometry}>
-            <lineBasicMaterial 
-              color={isSelected ? '#ffffff' : '#00ffff'} 
-              linewidth={2}
-              transparent={false}
-            />
-          </line>
-        );
+        const lineMaterial = new THREE.LineBasicMaterial({
+          color: isSelected ? '#ffffff' : '#00ffff',
+          linewidth: 2,
+          transparent: false
+        });
+        const lineObj = new THREE.Line(lineGeometry, lineMaterial);
+        return <primitive key={edgeIndex} object={lineObj} />;
       })}
 
       {/* Triangle ID label - ONLY show if facing camera (front side) */}
