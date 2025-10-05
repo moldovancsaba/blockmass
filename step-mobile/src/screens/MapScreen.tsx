@@ -16,6 +16,7 @@ import {
   TouchableOpacity,
   Alert,
   ActivityIndicator,
+  ScrollView,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 
@@ -344,7 +345,7 @@ export default function MapScreen() {
     <View style={styles.container}>
       <StatusBar style="dark" />
 
-      {/* Header */}
+      {/* Header - Fixed at top */}
       <View style={styles.header}>
         <View style={styles.headerTop}>
           <View>
@@ -375,13 +376,19 @@ export default function MapScreen() {
         )}
       </View>
 
-      {/* Map Placeholder - TODO: Replace with actual map */}
-      <View style={styles.mapPlaceholder}>
-        <Text style={styles.mapText}>📍 Map View</Text>
-        <Text style={styles.mapSubtext}>(Mapbox integration coming soon)</Text>
-      </View>
+      {/* Scrollable Content */}
+      <ScrollView 
+        style={styles.scrollContent}
+        contentContainerStyle={styles.scrollContentContainer}
+        showsVerticalScrollIndicator={true}
+      >
+        {/* Map Placeholder - TODO: Replace with actual map */}
+        <View style={styles.mapPlaceholder}>
+          <Text style={styles.mapText}>📍 Map View</Text>
+          <Text style={styles.mapSubtext}>(Mapbox integration coming soon)</Text>
+        </View>
 
-      {/* Location Info */}
+        {/* Location Info */}
       {currentLocation && (
         <View style={styles.infoPanel}>
           <Text style={styles.infoTitle}>Current Location</Text>
@@ -442,8 +449,8 @@ export default function MapScreen() {
         </View>
       )}
 
-      {/* Action Buttons */}
-      <View style={styles.actions}>
+        {/* Action Buttons */}
+        <View style={styles.actions}>
         <TouchableOpacity
           style={[styles.button, styles.secondaryButton]}
           onPress={updateLocation}
@@ -465,7 +472,8 @@ export default function MapScreen() {
             {mining ? '⏳ Mining...' : '⛏️ MINE'}
           </Text>
         </TouchableOpacity>
-      </View>
+        </View>
+      </ScrollView>
     </View>
   );
 }
@@ -551,8 +559,15 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     textAlign: 'center',
   },
-  mapPlaceholder: {
+  scrollContent: {
     flex: 1,
+  },
+  scrollContentContainer: {
+    flexGrow: 1,
+    paddingBottom: 20, // Extra padding at bottom
+  },
+  mapPlaceholder: {
+    height: 200, // Fixed height instead of flex: 1
     backgroundColor: '#F0F0F0',
     alignItems: 'center',
     justifyContent: 'center',
