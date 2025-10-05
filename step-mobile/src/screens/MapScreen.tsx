@@ -39,6 +39,11 @@ export default function MapScreen() {
   const [collectionProgress, setCollectionProgress] = useState<ProofCollectionProgress | null>(null);
   const [lastResult, setLastResult] = useState<ProofSubmissionResponseV2 | null>(null);
   const [testMode, setTestModeState] = useState<boolean>(TestMode.isTestModeEnabled());
+  const [compareMode, setCompareMode] = useState<boolean>(false);
+  const [comparisonResult, setComparisonResult] = useState<{
+    testMode: ProofSubmissionResponseV2 | null;
+    production: ProofSubmissionResponseV2 | null;
+  }>({ testMode: null, production: null });
 
   /**
    * Initialize app on mount:
@@ -208,11 +213,43 @@ export default function MapScreen() {
       const signature = await WalletLib.signMessage(message);
       console.log('[MapScreen] Payload signed');
 
-      // Submit to validator (or use test mode)
-      console.log(`[MapScreen] Submitting to validator API... (Test Mode: ${testMode ? 'ON' : 'OFF'})`);
-      const result = testMode
-        ? await TestMode.submitProofTestMode(payload, signature)
-        : await MeshClient.submitProofV2(payload, signature);
+      // Submit to validator (or use test mode, or compare both)
+      console.log(`[MapScreen] Submitting to validator API... (Test Mode: ${testMode ? 'ON' : 'OFF'}, Compare: ${compareMode ? 'ON' : 'OFF'})`);
+      
+      let result: ProofSubmissionResponseV2;
+      
+      if (compareMode) {
+        // COMPARE MODE: Submit to both test and production
+        console.log('[MapScreen] COMPARE MODE: Testing both fake and real data');
+        
+        // Test mode result
+        const testResult = await TestMode.submitProofTestMode(payload, signature);
+        
+        // Production API result
+        const prodResult = await MeshClient.submitProofV2(payload, signature);
+        
+        // Store both for comparison display
+        setComparisonResult({
+          testMode: testResult,
+          production: prodResult,
+        });
+        
+        // Use production result as primary
+        result = prodResult;
+        
+        console.log('[MapScreen] COMPARE MODE Results:');
+        console.log(`  Test Mode: ${testResult.confidence}/100`);
+        console.log(`  Production: ${prodResult.confidence}/100`);
+        console.log(`  Difference: ${Math.abs(testResult.confidence - prodResult.confidence)} points`);
+      } else {
+        // Normal mode
+        result = testMode
+          ? await TestMode.submitProofTestMode(payload, signature)
+          : await MeshClient.submitProofV2(payload, signature);
+        
+        // Clear comparison when not in compare mode
+        setComparisonResult({ testMode: null, production: null });
+      }
 
       // Store result for display
       setLastResult(result);
@@ -223,10 +260,20 @@ export default function MapScreen() {
       if (result.ok) {
         // Success - show confidence score breakdown
         const confidenceEmoji = getConfidenceEmoji(result.confidence);
-        Alert.alert(
-          `${confidenceEmoji} Mining Successful!`,
-          `Confidence Score: ${result.confidence}/100 (${result.confidenceLevel})\n\n` +
-          `Score Breakdown:\n` +
+        
+        // Build alert message
+        let alertMessage = `Confidence Score: ${result.confidence}/100 (${result.confidenceLevel})\n\n`;
+        
+        // Add comparison if in compare mode
+        if (compareMode && comparisonResult.testMode && comparisonResult.production) {
+          const diff = Math.abs(comparisonResult.testMode.confidence - comparisonResult.production.confidence);
+          alertMessage += `🔬 COMPARISON:\n`;
+          alertMessage += `Test Mode: ${comparisonResult.testMode.confidence}/100\n`;
+          alertMessage += `Production: ${comparisonResult.production.confidence}/100\n`;
+          alertMessage += `Difference: ${diff} points\n\n`;
+        }
+        
+        alertMessage += `Score Breakdown:\n` +
           `• Signature: ${result.scores.signature}/20\n` +
           `• GPS Accuracy: ${result.scores.gpsAccuracy}/15\n` +
           `• Speed Gate: ${result.scores.speedGate}/10\n` +
@@ -235,7 +282,11 @@ export default function MapScreen() {
           `• GNSS Raw: ${result.scores.gnssRaw}/15\n` +
           `• Cell Tower: ${result.scores.cellTower}/10\n\n` +
           `Reward: ${result.reward} STEP\n` +
-          `New Balance: ${result.balance} STEP`
+          `New Balance: ${result.balance} STEP`;
+        
+        Alert.alert(
+          `${confidenceEmoji} Mining Successful!`,
+          alertMessage
         );
       } else {
         // Error
@@ -271,6 +322,12 @@ export default function MapScreen() {
     const newValue = !testMode;
     setTestModeState(newValue);
     TestMode.setTestMode(newValue);
+    
+    // If turning on test mode, turn off compare mode
+    if (newValue && compareMode) {
+      setCompareMode(false);
+    }
+    
     Alert.alert(
       'Test Mode',
       `Test mode is now ${newValue ? 'ENABLED' : 'DISABLED'}.\n\n` +
@@ -279,6 +336,56 @@ export default function MapScreen() {
         : 'The app will use real data collection and API calls.'),
       [{ text: 'OK' }]
     );
+  };
+
+  /**
+   * Toggle compare mode on/off
+   */
+  const toggleCompareMode = () => {
+    const newValue = !compareMode;
+    setCompareMode(newValue);
+    
+    // If turning on compare mode, turn off test mode
+    if (newValue && testMode) {
+      setTestModeState(false);
+      TestMode.setTestMode(false);
+    }
+    
+    Alert.alert(
+      'Compare Mode',
+      `Compare mode is now ${newValue ? 'ENABLED' : 'DISABLED'}.\n\n` +
+      (newValue
+        ? 'The app will submit to BOTH test mode and production API, showing you the difference in confidence scores.\n\nThis helps you see how fake data compares to real calculations.'
+        : 'The app will use normal submission mode.'),
+      [{ text: 'OK' }]
+    );
+  };
+
+  /**
+   * Wake up production API
+   */
+  const wakeUpApi = async () => {
+    try {
+      setLoading(true);
+      console.log('[MapScreen] Waking up production API...');
+      
+      const response = await fetch('https://step-blockchain-api.onrender.com/health');
+      const data = await response.json();
+      
+      setLoading(false);
+      Alert.alert(
+        '🚀 API Awake!',
+        `Production API is ready.\n\nService: ${data.service}\nVersion: ${data.version}\n\nYou can now mine with production data.`,
+        [{ text: 'OK' }]
+      );
+    } catch (error) {
+      setLoading(false);
+      Alert.alert(
+        'Wake Up Failed',
+        `Could not reach API: ${error}\n\nMake sure you have internet connection.`,
+        [{ text: 'OK' }]
+      );
+    }
   };
   
   /**
@@ -357,20 +464,37 @@ export default function MapScreen() {
             )}
           </View>
           {__DEV__ && (
-            <TouchableOpacity
-              style={[styles.testModeButton, testMode && styles.testModeButtonActive]}
-              onPress={toggleTestMode}
-            >
-              <Text style={styles.testModeButtonText}>
-                {testMode ? '🧪 TEST' : '💼 PROD'}
-              </Text>
-            </TouchableOpacity>
+            <View style={styles.headerButtons}>
+              <TouchableOpacity
+                style={[styles.testModeButton, testMode && styles.testModeButtonActive]}
+                onPress={toggleTestMode}
+              >
+                <Text style={styles.testModeButtonText}>
+                  {testMode ? '🧪 TEST' : '💼 PROD'}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.testModeButton, compareMode && styles.compareModeActive]}
+                onPress={toggleCompareMode}
+              >
+                <Text style={styles.testModeButtonText}>
+                  {compareMode ? '🔬 CMP' : '🔵 ---'}
+                </Text>
+              </TouchableOpacity>
+            </View>
           )}
         </View>
         {testMode && (
           <View style={styles.testModeBanner}>
             <Text style={styles.testModeBannerText}>
               ⚠️ TEST MODE: Using simulated data
+            </Text>
+          </View>
+        )}
+        {compareMode && (
+          <View style={styles.compareModeBanner}>
+            <Text style={styles.compareModeBannerText}>
+              🔬 COMPARE MODE: Testing fake vs real data
             </Text>
           </View>
         )}
@@ -449,6 +573,31 @@ export default function MapScreen() {
         </View>
       )}
 
+        {/* Comparison Results */}
+        {compareMode && comparisonResult.testMode && comparisonResult.production && (
+          <View style={styles.comparisonPanel}>
+            <Text style={styles.comparisonTitle}>🔬 Comparison Results</Text>
+            <View style={styles.comparisonRow}>
+              <View style={styles.comparisonColumn}>
+                <Text style={styles.comparisonLabel}>Test Mode (Fake)</Text>
+                <Text style={styles.comparisonScore}>{comparisonResult.testMode.confidence}/100</Text>
+                <Text style={styles.comparisonLevel}>{comparisonResult.testMode.confidenceLevel}</Text>
+              </View>
+              <View style={styles.comparisonDivider} />
+              <View style={styles.comparisonColumn}>
+                <Text style={styles.comparisonLabel}>Production (Real)</Text>
+                <Text style={styles.comparisonScore}>{comparisonResult.production.confidence}/100</Text>
+                <Text style={styles.comparisonLevel}>{comparisonResult.production.confidenceLevel}</Text>
+              </View>
+            </View>
+            <View style={styles.comparisonDiff}>
+              <Text style={styles.comparisonDiffText}>
+                Difference: {Math.abs(comparisonResult.testMode.confidence - comparisonResult.production.confidence)} points
+              </Text>
+            </View>
+          </View>
+        )}
+
         {/* Action Buttons */}
         <View style={styles.actions}>
         <TouchableOpacity
@@ -458,6 +607,16 @@ export default function MapScreen() {
         >
           <Text style={styles.buttonText}>🔄 Refresh Location</Text>
         </TouchableOpacity>
+
+        {__DEV__ && !testMode && (
+          <TouchableOpacity
+            style={[styles.button, styles.wakeUpButton]}
+            onPress={wakeUpApi}
+            disabled={mining || loading}
+          >
+            <Text style={styles.buttonText}>🚀 Wake Up API</Text>
+          </TouchableOpacity>
+        )}
 
         <TouchableOpacity
           style={[
@@ -520,6 +679,10 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'flex-start',
   },
+  headerButtons: {
+    flexDirection: 'row',
+    gap: 8,
+  },
   title: {
     fontSize: 24,
     fontWeight: 'bold',
@@ -542,6 +705,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#FF9800',
     borderColor: '#FF9800',
   },
+  compareModeActive: {
+    backgroundColor: '#2196F3',
+    borderColor: '#2196F3',
+  },
   testModeButtonText: {
     color: '#FFFFFF',
     fontSize: 11,
@@ -558,6 +725,77 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: 'bold',
     textAlign: 'center',
+  },
+  compareModeBanner: {
+    backgroundColor: '#2196F3',
+    paddingVertical: 8,
+    marginTop: 12,
+    borderRadius: 4,
+  },
+  compareModeBannerText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: 'bold',
+    textAlign: 'center',
+  },
+  comparisonPanel: {
+    backgroundColor: '#E3F2FD',
+    borderWidth: 2,
+    borderColor: '#2196F3',
+    margin: 10,
+    padding: 15,
+  },
+  comparisonTitle: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    marginBottom: 12,
+    color: '#1565C0',
+    textAlign: 'center',
+  },
+  comparisonRow: {
+    flexDirection: 'row',
+    marginBottom: 12,
+  },
+  comparisonColumn: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  comparisonDivider: {
+    width: 2,
+    backgroundColor: '#2196F3',
+    marginHorizontal: 10,
+  },
+  comparisonLabel: {
+    fontSize: 11,
+    color: '#1565C0',
+    marginBottom: 8,
+  },
+  comparisonScore: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: '#1565C0',
+  },
+  comparisonLevel: {
+    fontSize: 10,
+    color: '#1565C0',
+    marginTop: 4,
+  },
+  comparisonDiff: {
+    backgroundColor: '#FFFFFF',
+    padding: 8,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: '#2196F3',
+  },
+  comparisonDiffText: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#1565C0',
+    textAlign: 'center',
+  },
+  wakeUpButton: {
+    backgroundColor: '#4CAF50',
+    borderColor: '#4CAF50',
   },
   scrollContent: {
     flex: 1,
