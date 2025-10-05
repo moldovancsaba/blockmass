@@ -4,9 +4,9 @@
 
 STEP is a novel blockchain that uses physical location as proof-of-work. Users mine tokens by proving their presence at unique geographic locations on Earth's surface, which is divided into 2.8 trillion triangular regions.
 
-**Version:** 0.3.0  
+**Version:** 0.3.2  
 **Status:** Phase 2 - Centralized Validator (Active Development)  
-**Last Updated:** 2025-10-05T12:35:16.824Z
+**Last Updated:** 2025-10-05T15:57:04.817Z
 
 ---
 
@@ -188,7 +188,7 @@ curl http://localhost:3002/health
 # {
 #   "ok": true,
 #   "service": "step-mesh-api",
-#   "version": "0.3.0",
+#   "version": "0.3.2",
 #   "environment": "development",
 #   "database": {
 #     "status": "ok",
