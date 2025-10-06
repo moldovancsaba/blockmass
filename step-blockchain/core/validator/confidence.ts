@@ -138,9 +138,12 @@ export function getConfidenceConfig(): ConfidenceConfig {
     ? parseInt(process.env.CONFIDENCE_ACCEPTANCE_THRESHOLD, 10)
     : DEFAULT_CONFIDENCE_CONFIG.acceptanceThreshold;
   
+  const requireAttestation = process.env.CONFIDENCE_REQUIRE_ATTESTATION !== 'false';
+  
   return {
     ...DEFAULT_CONFIDENCE_CONFIG,
     acceptanceThreshold: threshold,
+    requireAttestation,
   };
 }
 
