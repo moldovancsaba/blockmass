@@ -126,6 +126,25 @@ export const DEFAULT_CONFIDENCE_CONFIG: ConfidenceConfig = {
 };
 
 /**
+ * Get confidence configuration with environment variable overrides.
+ * 
+ * Reads from process.env and falls back to DEFAULT_CONFIDENCE_CONFIG.
+ * Allows runtime configuration without code changes.
+ * 
+ * @returns ConfidenceConfig with env var overrides applied
+ */
+export function getConfidenceConfig(): ConfidenceConfig {
+  const threshold = process.env.CONFIDENCE_ACCEPTANCE_THRESHOLD
+    ? parseInt(process.env.CONFIDENCE_ACCEPTANCE_THRESHOLD, 10)
+    : DEFAULT_CONFIDENCE_CONFIG.acceptanceThreshold;
+  
+  return {
+    ...DEFAULT_CONFIDENCE_CONFIG,
+    acceptanceThreshold: threshold,
+  };
+}
+
+/**
  * Compute confidence score from validation results.
  * 
  * Each validation check contributes points to the total score.
@@ -137,8 +156,10 @@ export const DEFAULT_CONFIDENCE_CONFIG: ConfidenceConfig = {
  */
 export function computeConfidence(
   results: ValidationResults,
-  config: ConfidenceConfig = DEFAULT_CONFIDENCE_CONFIG
+  config?: ConfidenceConfig
 ): ConfidenceScores {
+  // Use env var config if not explicitly provided
+  const conf = config || getConfidenceConfig();
   const scores: ConfidenceScores = {
     signature: 0,
     gpsAccuracy: 0,
@@ -155,32 +176,32 @@ export function computeConfidence(
   // Score: Signature verification (20 points max)
   // Why: Prevents impersonation, ensures proof authenticity
   if (results.signatureValid) {
-    scores.signature = config.weights.signature;
+    scores.signature = conf.weights.signature;
   }
   
   // Score: GPS accuracy (15 points max)
   // Why: Filters low-quality location data, encourages outdoor mining
   if (results.gpsAccuracyOk) {
-    scores.gpsAccuracy = config.weights.gpsAccuracy;
+    scores.gpsAccuracy = conf.weights.gpsAccuracy;
   }
   
   // Score: Speed gate (10 points max)
   // Why: Prevents teleportation, catches rapid-fire spoofing
   if (results.speedGateOk) {
-    scores.speedGate = config.weights.speedGate;
+    scores.speedGate = conf.weights.speedGate;
   }
   
   // Score: Moratorium (5 points max)
   // Why: Rate-limits submissions, gives GPS time to stabilize
   if (results.moratoriumOk) {
-    scores.moratorium = config.weights.moratorium;
+    scores.moratorium = conf.weights.moratorium;
   }
   
   // Score: Hardware attestation (25 points max) - CRITICAL
   // Why: Blocks 80%+ of emulator/rooted device attacks
   // This is the single most important anti-spoofing measure
   if (results.attestationValid) {
-    scores.attestation = config.weights.attestation;
+    scores.attestation = conf.weights.attestation;
   }
   
   // Score: GNSS raw data (0-15 points)
@@ -188,36 +209,36 @@ export function computeConfidence(
   // Only available on Android 7.0+ (API 24+)
   if (results.gnssRawScore !== undefined) {
     // Use detailed GNSS scoring if provided
-    scores.gnssRaw = Math.min(results.gnssRawScore, config.weights.gnssRaw);
+    scores.gnssRaw = Math.min(results.gnssRawScore, conf.weights.gnssRaw);
   } else if (results.gnssRawOk !== undefined) {
     // Fallback to boolean check
-    scores.gnssRaw = results.gnssRawOk ? config.weights.gnssRaw : 0;
+    scores.gnssRaw = results.gnssRawOk ? conf.weights.gnssRaw : 0;
   }
   
   // Score: Cell tower cross-check (0-10 points)
   // Why: Catches 40-60% of GPS spoofing by verifying cell location matches GPS
   if (results.cellTowerScore !== undefined) {
     // Use detailed cell tower scoring if provided
-    scores.cellTower = Math.min(results.cellTowerScore, config.weights.cellTower);
+    scores.cellTower = Math.min(results.cellTowerScore, conf.weights.cellTower);
   } else if (results.cellTowerOk !== undefined) {
     // Fallback to boolean check
-    scores.cellTower = results.cellTowerOk ? config.weights.cellTower : 0;
+    scores.cellTower = results.cellTowerOk ? conf.weights.cellTower : 0;
   }
   
   // Score: Wi-Fi fingerprinting (0-10 points, optional)
   // Why: Accurate indoor location verification (±10 meters)
   if (results.wifiScore !== undefined) {
     // Use detailed Wi-Fi scoring if provided
-    scores.wifi = Math.min(results.wifiScore, config.weights.wifi);
+    scores.wifi = Math.min(results.wifiScore, conf.weights.wifi);
   } else if (results.wifiOk !== undefined) {
     // Fallback to boolean check
-    scores.wifi = results.wifiOk ? config.weights.wifi : 0;
+    scores.wifi = results.wifiOk ? conf.weights.wifi : 0;
   }
   
   // Score: Witness verification (+10 bonus, Phase 3)
   // Why: Decentralized peer attestation, adds trust layer
   if (results.witnessValid) {
-    scores.witness = config.weights.witness;
+    scores.witness = conf.weights.witness;
   }
   
   // Calculate total score
@@ -251,17 +272,19 @@ export function computeConfidence(
  */
 export function shouldAccept(
   scores: ConfidenceScores,
-  config: ConfidenceConfig = DEFAULT_CONFIDENCE_CONFIG
+  config?: ConfidenceConfig
 ): boolean {
+  // Use env var config if not explicitly provided
+  const conf = config || getConfidenceConfig();
   // Check: Attestation required?
   // If attestation is required but not provided, reject immediately
   // This blocks 80%+ of emulator/rooted device attacks
-  if (config.requireAttestation && scores.attestation === 0) {
+  if (conf.requireAttestation && scores.attestation === 0) {
     return false;
   }
   
   // Check: Total score meets threshold?
-  return scores.total >= config.acceptanceThreshold;
+  return scores.total >= conf.acceptanceThreshold;
 }
 
 /**
@@ -276,8 +299,10 @@ export function shouldAccept(
  */
 export function getRejectionReasons(
   scores: ConfidenceScores,
-  config: ConfidenceConfig = DEFAULT_CONFIDENCE_CONFIG
+  config?: ConfidenceConfig
 ): string[] {
+  // Use env var config if not explicitly provided
+  const conf = config || getConfidenceConfig();
   const reasons: string[] = [];
   
   // Check signature
@@ -301,29 +326,29 @@ export function getRejectionReasons(
   }
   
   // Check attestation (CRITICAL)
-  if (config.requireAttestation && scores.attestation === 0) {
+  if (conf.requireAttestation && scores.attestation === 0) {
     reasons.push('Device attestation failed - emulator or rooted device detected');
   }
   
   // Check GNSS raw data
-  if (scores.gnssRaw === 0 && config.weights.gnssRaw > 0) {
+  if (scores.gnssRaw === 0 && conf.weights.gnssRaw > 0) {
     reasons.push('GNSS data quality low or unavailable - satellite signal inconsistent');
   }
   
   // Check cell tower
-  if (scores.cellTower === 0 && config.weights.cellTower > 0) {
+  if (scores.cellTower === 0 && conf.weights.cellTower > 0) {
     reasons.push('Cell tower location mismatch - GPS location inconsistent with network');
   }
   
   // Check Wi-Fi
-  if (scores.wifi === 0 && config.weights.wifi > 0) {
+  if (scores.wifi === 0 && conf.weights.wifi > 0) {
     reasons.push('Wi-Fi fingerprint mismatch - location inconsistent with visible networks');
   }
   
   // Add overall confidence message
   reasons.push(
-    `Overall confidence: ${scores.total}/${config.acceptanceThreshold} ` +
-    `(threshold: ${config.acceptanceThreshold})`
+    `Overall confidence: ${scores.total}/${conf.acceptanceThreshold} ` +
+    `(threshold: ${conf.acceptanceThreshold})`
   );
   
   return reasons;
