@@ -273,9 +273,18 @@ export async function verifyAttestation(
  * Why: In development/testing, we may want to bypass attestation.
  * In production, attestation should ALWAYS be required.
  * 
+ * TEMPORARY: Allow bypass in production with ALLOW_NO_ATTESTATION=true for Phase 2.5 testing.
+ * TODO: Remove this override before public launch!
+ * 
  * @returns true if attestation is required, false otherwise
  */
 export function isAttestationRequired(): boolean {
+  // TEMPORARY: Allow explicit bypass for testing (even in production)
+  if (process.env.ALLOW_NO_ATTESTATION === 'true') {
+    console.warn('⚠️  SECURITY WARNING: Attestation requirement bypassed via ALLOW_NO_ATTESTATION env var');
+    return false;
+  }
+
   // Check environment variable (default: true in production)
   const required = process.env.CONFIDENCE_REQUIRE_ATTESTATION !== 'false';
   const env = process.env.NODE_ENV || 'development';
