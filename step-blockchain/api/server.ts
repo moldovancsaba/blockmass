@@ -19,9 +19,17 @@ import { config } from 'dotenv';
 config();
 
 import express from 'express';
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import { connectToDb, dbHealth, closeDb } from '../core/db.js';
 import meshRouter from './mesh-simple.js';
 import proofRouter from './proof.js';
+
+// Read version from package.json (CommonJS-compatible path)
+const packageJson = JSON.parse(
+  readFileSync(join(__dirname, '..', 'package.json'), 'utf-8')
+);
+const VERSION = packageJson.version;
 
 const app = express();
 const PORT = process.env.PORT || 5500;
@@ -82,7 +90,7 @@ app.get('/health', async (req, res) => {
   res.json({
     ok: true,
     service: 'step-mesh-api',
-    version: '0.1.0',
+    version: VERSION,
     environment: NODE_ENV,
     database: health,
     timestamp: new Date().toISOString(),
@@ -97,7 +105,7 @@ app.get('/health', async (req, res) => {
 app.get('/', (req, res) => {
   res.json({
     service: 'STEP Mesh API',
-    version: '0.1.0',
+    version: VERSION,
     documentation: 'https://github.com/step-protocol/step-blockchain',
     endpoints: {
       health: 'GET /health',
