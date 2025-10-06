@@ -26,8 +26,9 @@ import meshRouter from './mesh-simple.js';
 import proofRouter from './proof.js';
 
 // Read version from package.json (CommonJS-compatible path)
+// When compiled, this runs from dist/api/, so need to go up 2 levels: ../../package.json
 const packageJson = JSON.parse(
-  readFileSync(join(__dirname, '..', 'package.json'), 'utf-8')
+  readFileSync(join(__dirname, '..', '..', 'package.json'), 'utf-8')
 );
 const VERSION = packageJson.version;
 
