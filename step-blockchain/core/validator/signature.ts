@@ -163,7 +163,7 @@ export function isProofPayloadV2(payload: ProofPayload | ProofPayloadV2): payloa
 }
 
 /**
- * Build canonical signable message from proof payload.
+ * Build canonical signable message from proof payload (v1).
  * 
  * Message format (strict order, no whitespace):
  * STEP-PROOF-v1|account:{account}|triangle:{triangleId}|lat:{lat}|lon:{lon}|acc:{accuracy}|ts:{timestamp}|nonce:{nonce}
@@ -177,7 +177,7 @@ export function isProofPayloadV2(payload: ProofPayload | ProofPayloadV2): payloa
  * Example:
  * STEP-PROOF-v1|account:0x1234...|triangle:STEP-TRI-v1:...|lat:47.4979|lon:19.0402|acc:12.5|ts:2025-10-03T16:40:00.000Z|nonce:uuid-here
  * 
- * @param payload - Location proof payload
+ * @param payload - Location proof payload (v1)
  * @returns Canonical message string
  */
 export function buildSignableMessage(payload: ProofPayload): string {
@@ -199,6 +199,41 @@ export function buildSignableMessage(payload: ProofPayload): string {
   ].join('|');
   
   return message;
+}
+
+/**
+ * Build canonical signable message from proof payload (v2).
+ * 
+ * For v2, we use JSON.stringify with sorted keys for deterministic encoding.
+ * This is simpler than maintaining a complex pipe-separated format with nested objects.
+ * 
+ * Why JSON.stringify:
+ * - Deterministic when keys are sorted
+ * - Handles nested objects (location, device, gnss, cell, wifi)
+ * - Easy to debug and verify
+ * - Standard format across many systems
+ * 
+ * CRITICAL: Keys must be sorted alphabetically to ensure determinism!
+ * 
+ * @param payload - Location proof payload (v2)
+ * @returns JSON string representation for signing
+ */
+export function buildSignableMessageV2(payload: ProofPayloadV2): string {
+  // Validate version
+  if (payload.version !== 'STEP-PROOF-v2') {
+    throw new Error(`Unsupported proof version: ${payload.version}`);
+  }
+  
+  // Normalize account to lowercase
+  const normalizedPayload = {
+    ...payload,
+    account: payload.account.toLowerCase(),
+  };
+  
+  // Use JSON.stringify with sorted keys for determinism
+  // Note: JSON.stringify maintains key order from the object,
+  // so we need to ensure the payload object has sorted keys
+  return JSON.stringify(normalizedPayload, Object.keys(normalizedPayload).sort());
 }
 
 /**
@@ -301,10 +336,10 @@ export async function recoverAddressFromSig(
 }
 
 /**
- * Verify signature matches expected address.
+ * Verify signature matches expected address (supports v1 and v2).
  * 
  * Full verification flow:
- * 1. Build canonical message from payload
+ * 1. Build canonical message from payload (v1 or v2 format)
  * 2. Hash message with EIP-191 prefix
  * 3. Recover signer address from signature
  * 4. Compare recovered address with payload.account (case-insensitive)
@@ -314,13 +349,13 @@ export async function recoverAddressFromSig(
  * - Users may submit lowercase, uppercase, or checksummed
  * - Underlying address is the same, only display format differs
  * 
- * @param payload - Location proof payload
+ * @param payload - Location proof payload (v1 or v2)
  * @param signatureHex - 65-byte signature as hex string
  * @param expectedAddress - Expected signer address
  * @returns Verification result with recovered address or error
  */
 export async function verifySignature(
-  payload: ProofPayload,
+  payload: ProofPayload | ProofPayloadV2,
   signatureHex: string,
   expectedAddress: string
 ): Promise<{
@@ -329,8 +364,10 @@ export async function verifySignature(
   error?: string;
 }> {
   try {
-    // Step 1: Build canonical message
-    const message = buildSignableMessage(payload);
+    // Step 1: Build canonical message (v1 or v2)
+    const message = isProofPayloadV2(payload)
+      ? buildSignableMessageV2(payload)
+      : buildSignableMessage(payload);
     
     // Step 2: Hash with EIP-191 prefix
     const messageHash = hashMessageEip191(message);
