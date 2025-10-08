@@ -111,6 +111,107 @@ interface TriangleComponentProps {
 // ========================================
 
 /**
+ * Get ISO 8601 timestamp with milliseconds in UTC
+ * Used for structured logging throughout the application
+ */
+function getTimestamp(): string {
+  return new Date().toISOString();
+}
+
+/**
+ * Parse children response from API with robust error handling
+ * Handles both nested result structure and direct array responses
+ */
+function parseChildrenResponse(body: any): string[] {
+  const timestamp = getTimestamp();
+  
+  // Handle nested result structure
+  const result = body.result || body;
+  const childrenArray = result.children || result;
+  
+  if (!Array.isArray(childrenArray)) {
+    console.warn(`[${timestamp}] ⚠️ Children response is not an array:`, childrenArray);
+    return [];
+  }
+  
+  // Normalize children to array of triangle IDs
+  const childIds: string[] = [];
+  for (const item of childrenArray) {
+    if (typeof item === 'string') {
+      childIds.push(item);
+    } else if (item && typeof item === 'object') {
+      // Try known keys: triangleId, id
+      const id = item.triangleId || item.id;
+      if (id) {
+        childIds.push(id);
+      } else {
+        console.warn(`[${timestamp}] ⚠️ Child object missing triangleId/id:`, item);
+      }
+    }
+  }
+  
+  if (childIds.length !== 4) {
+    console.warn(`[${timestamp}] ⚠️ Expected 4 children, got ${childIds.length}`);
+  }
+  
+  return childIds;
+}
+
+/**
+ * Parse polygon response from API with validation
+ * Extracts GeoJSON polygon coordinates from nested API response
+ */
+function parsePolygonResponse(body: any, triangleId: string): number[][] {
+  const timestamp = getTimestamp();
+  
+  // Handle nested result structure
+  const result = body.result || body;
+  const polygon = result.polygon || body.polygon || result;
+  
+  // Validate polygon structure
+  if (!polygon || polygon.type !== 'Polygon') {
+    throw new Error(`[${timestamp}] Invalid polygon type for ${triangleId}: ${polygon?.type}`);
+  }
+  
+  if (!Array.isArray(polygon.coordinates) || polygon.coordinates.length === 0) {
+    throw new Error(`[${timestamp}] Missing polygon coordinates for ${triangleId}`);
+  }
+  
+  // Return first ring (exterior boundary)
+  const ring = polygon.coordinates[0];
+  if (!Array.isArray(ring) || ring.length < 3) {
+    throw new Error(`[${timestamp}] Invalid polygon ring for ${triangleId}: ${ring?.length} points`);
+  }
+  
+  return ring;
+}
+
+/**
+ * Convert GeoJSON ring to triangle vertices
+ * Removes closing point and extracts first 3 unique vertices
+ */
+function ringToVertices(ring: number[][], triangleId: string): [number, number][] {
+  const timestamp = getTimestamp();
+  
+  // Remove closing point if present (first point === last point)
+  let points = ring;
+  if (ring.length > 3) {
+    const first = ring[0];
+    const last = ring[ring.length - 1];
+    if (first[0] === last[0] && first[1] === last[1]) {
+      points = ring.slice(0, -1);
+    }
+  }
+  
+  if (points.length < 3) {
+    throw new Error(`[${timestamp}] Insufficient vertices for ${triangleId}: ${points.length}`);
+  }
+  
+  // Take first 3 vertices as [lon, lat]
+  return points.slice(0, 3) as [number, number][];
+}
+
+/**
  * Convert lat/lon coordinates to 3D position on unit sphere
  * @param lat - Latitude in degrees (-90 to 90)
  * @param lon - Longitude in degrees (-180 to 180)
@@ -189,26 +290,47 @@ function computeCentroid3D(vertices: [number, number][]): THREE.Vector3 {
 }
 
 /**
- * Calculate status-based color for triangle
+ * Calculate progressive color for triangle based on clicks
+ * Shows visual progression from first click (1) through subdivision (11)
  */
 function getTriangleColor(status: string, clicks: number): string {
-  switch (status) {
-    case 'pending':
-      return '#222222'; // Dark gray base color - not yet touched
-    case 'active':
-      // Yellow gradient based on clicks (1-7)
-      const intensity = Math.min(clicks / 7, 1);
-      const r = 255;
-      const g = Math.floor(255 * (0.5 + intensity * 0.5));
-      const b = 0;
-      return `rgb(${r}, ${g}, ${b})`;
-    case 'mined_out':
-      return '#00aa00'; // Green - ready to subdivide (8-10 clicks)
-    case 'subdivided':
-      return '#0066ff'; // Blue - already subdivided
-    default:
-      return '#222222'; // Dark gray fallback
+  // Subdivided triangles are blue
+  if (status === 'subdivided') {
+    return '#0066ff';
   }
+  
+  // Progressive color gradient from dark gray → yellow → orange → green
+  // Clicks 0-11 with smooth color transitions
+  if (clicks === 0) {
+    return '#1a1a1a'; // Very dark gray - not yet clicked
+  } else if (clicks <= 3) {
+    // Clicks 1-3: Dark gray → Medium gray
+    const t = clicks / 3;
+    const gray = Math.floor(26 + (102 - 26) * t); // #1a → #66
+    return `rgb(${gray}, ${gray}, ${gray})`;
+  } else if (clicks <= 6) {
+    // Clicks 4-6: Gray → Yellow
+    const t = (clicks - 3) / 3;
+    const r = Math.floor(102 + (255 - 102) * t); // #66 → #ff
+    const g = Math.floor(102 + (204 - 102) * t); // #66 → #cc
+    const b = Math.floor(102 * (1 - t));         // #66 → #00
+    return `rgb(${r}, ${g}, ${b})`;
+  } else if (clicks <= 9) {
+    // Clicks 7-9: Yellow → Orange
+    const t = (clicks - 6) / 3;
+    const r = 255;
+    const g = Math.floor(204 - 102 * t); // #cc → #66
+    const b = 0;
+    return `rgb(${r}, ${g}, ${b})`;
+  } else if (clicks === 10) {
+    // Click 10: Bright orange (ready to subdivide)
+    return '#ff3300';
+  } else if (clicks === 11) {
+    // Click 11: Green (subdividing)
+    return '#00ff00';
+  }
+  
+  return '#1a1a1a'; // Fallback
 }
 
 /**
@@ -272,7 +394,7 @@ function SphericalTriangle({ triangle, onMine, isSelected }: TriangleComponentPr
   // Centroid position for label
   const centroid3D = useMemo(() => computeCentroid3D(triangle.vertices), [triangle.vertices]);
 
-  // Triangle color based on status
+  // Triangle color based on clicks - progressive from first click
   const color = useMemo(() => getTriangleColor(triangle.status, triangle.clicks), [triangle.status, triangle.clicks]);
 
   // Check if triangle is facing camera (front side visible)
@@ -291,45 +413,6 @@ function SphericalTriangle({ triangle, onMine, isSelected }: TriangleComponentPr
     setIsVisible(dotProduct > 0);
   });
 
-  // Create CURVED EDGES using great circle arcs
-  const curvedEdges = useMemo(() => {
-    const curves: THREE.Vector3[][] = [];
-    const segments = 20; // Points per edge for smooth curves
-    
-    // Create 3 edges with SLERP interpolation (great circles)
-    const edges = [
-      [vertices3D[0], vertices3D[1]],
-      [vertices3D[1], vertices3D[2]],
-      [vertices3D[2], vertices3D[0]]
-    ];
-    
-    edges.forEach(([v1, v2]) => {
-      const points: THREE.Vector3[] = [];
-      for (let i = 0; i <= segments; i++) {
-        const t = i / segments;
-        // SLERP for true great circle arc
-        const dot = v1.dot(v2);
-        const theta = Math.acos(Math.max(-1, Math.min(1, dot)));
-        
-        if (Math.abs(theta) < 0.001) {
-          points.push(new THREE.Vector3().lerpVectors(v1, v2, t).normalize());
-        } else {
-          const sinTheta = Math.sin(theta);
-          const ratioA = Math.sin((1 - t) * theta) / sinTheta;
-          const ratioB = Math.sin(t * theta) / sinTheta;
-          
-          points.push(new THREE.Vector3(
-            v1.x * ratioA + v2.x * ratioB,
-            v1.y * ratioA + v2.y * ratioB,
-            v1.z * ratioA + v2.z * ratioB
-          ));
-        }
-      }
-      curves.push(points);
-    });
-    
-    return curves;
-  }, [vertices3D]);
 
   // Click handler
   const handleClick = (event: any) => {
@@ -346,7 +429,7 @@ function SphericalTriangle({ triangle, onMine, isSelected }: TriangleComponentPr
         onClick={handleClick}
       >
         <meshStandardMaterial
-          color="#222222"
+          color={color}
           metalness={0.0}
           roughness={1.0}
           side={THREE.FrontSide}
@@ -358,17 +441,6 @@ function SphericalTriangle({ triangle, onMine, isSelected }: TriangleComponentPr
         />
       </mesh>
 
-      {/* TRUE CURVED EDGES - Great circle arcs */}
-      {curvedEdges.map((edgePoints, edgeIndex) => {
-        const lineGeometry = new THREE.BufferGeometry().setFromPoints(edgePoints);
-        const lineMaterial = new THREE.LineBasicMaterial({
-          color: isSelected ? '#ffffff' : '#00ffff',
-          linewidth: 2,
-          transparent: false
-        });
-        const lineObj = new THREE.Line(lineGeometry, lineMaterial);
-        return <primitive key={edgeIndex} object={lineObj} />;
-      })}
 
       {/* Triangle ID label - ONLY show if facing camera (front side) */}
       {isVisible && (
@@ -630,45 +702,82 @@ export default function MeshMining3D() {
    * - Fetch children from API
    * - Replace parent with children in render
    * - Maintain 512 triangle limit via zoom restriction
+   * 
+   * ROBUST IMPLEMENTATION:
+   * - Prevents re-entry via status check
+   * - Uses functional state updates to avoid stale closures
+   * - Fetches all polygon data concurrently with Promise.all
+   * - Comprehensive error handling with structured logging
    */
   async function subdivideTriangle(parentId: string) {
+    const timestamp = getTimestamp();
+    
     try {
-      console.log(`🔨 Subdividing ${parentId}...`);
-
-      // Fetch children from API
-      const childrenResponse = await fetch(`${API_BASE}/mesh/children/${parentId}`);
-      if (!childrenResponse.ok) {
-        throw new Error(`Failed to fetch children: ${childrenResponse.status}`);
-      }
-
-      const children_response = await childrenResponse.json();
-      const childrenData = children_response.result || children_response; // Handle nested result
-      console.log(`📦 Found ${childrenData.children?.length || 0} children`);
-
-      if (!childrenData.children || childrenData.children.length === 0) {
-        console.warn('⚠️ No children found for subdivision');
+      // Get parent triangle and validate state
+      const parent = triangles.get(parentId);
+      if (!parent) {
+        console.warn(`[${timestamp}] ⚠️ Parent triangle ${parentId} not found`);
         return;
       }
+      
+      // Prevent re-entry: if already subdividing or subdivided, exit early
+      if (parent.status === 'subdivided') {
+        console.info(`[${timestamp}] ℹ️ Triangle ${parentId} already subdivided, skipping`);
+        return;
+      }
+      
+      console.info(`[${timestamp}] 🔨 Starting subdivision of ${parentId} (level ${parent.level}, clicks ${parent.clicks})`);
 
-      // Fetch polygon data for each child
-      const newTriangles = new Map(triangles);
-      const parent = newTriangles.get(parentId)!;
-      const childIds: string[] = [];
+      // Step 1: Mark parent as subdividing to prevent concurrent subdivisions
+      setTriangles(prevTriangles => {
+        const updated = new Map(prevTriangles);
+        const currentParent = updated.get(parentId);
+        if (currentParent) {
+          updated.set(parentId, {
+            ...currentParent,
+            status: 'subdivided' as const, // Prevent further clicks
+          });
+        }
+        return updated;
+      });
 
-      // API returns array of { triangleId, childIndex }
-      for (const childObj of childrenData.children) {
-        const childId = typeof childObj === 'string' ? childObj : childObj.triangleId;
-        // Fetch polygon
+      // Step 2: Fetch children IDs from API
+      const childrenResponse = await fetch(`${API_BASE}/mesh/children/${parentId}`);
+      if (!childrenResponse.ok) {
+        throw new Error(`HTTP ${childrenResponse.status} fetching children`);
+      }
+      const childrenBody = await childrenResponse.json();
+      const childIds = parseChildrenResponse(childrenBody);
+      
+      if (childIds.length === 0) {
+        console.warn(`[${timestamp}] ⚠️ No children found for ${parentId}`);
+        return;
+      }
+      
+      console.info(`[${timestamp}] 📦 Found ${childIds.length} children for ${parentId}`);
+
+      // Step 3: Fetch polygon data for all children concurrently
+      const polygonPromises = childIds.map(async (childId) => {
         const polygonResponse = await fetch(`${API_BASE}/mesh/polygon/${childId}`);
-        const polygon_response = await polygonResponse.json();
-        const polygonData = polygon_response.result?.polygon || polygon_response.polygon || polygon_response; // Handle nested result
-
-        // Compute centroid from polygon if not provided
-        const vertices = polygonData.coordinates[0].slice(0, 3) as [number, number][];
+        if (!polygonResponse.ok) {
+          throw new Error(`HTTP ${polygonResponse.status} fetching polygon for ${childId}`);
+        }
+        const polygonBody = await polygonResponse.json();
+        return { childId, polygonBody };
+      });
+      
+      const polygonResults = await Promise.all(polygonPromises);
+      
+      // Step 4: Build child Triangle objects
+      const childTriangles: Triangle[] = [];
+      for (const { childId, polygonBody } of polygonResults) {
+        const ring = parsePolygonResponse(polygonBody, childId);
+        const vertices = ringToVertices(ring, childId);
+        
+        // Compute centroid from vertices
         const centroidLon = vertices.reduce((sum, v) => sum + v[0], 0) / 3;
         const centroidLat = vertices.reduce((sum, v) => sum + v[1], 0) / 3;
-
-        // Create child triangle
+        
         const child: Triangle = {
           id: childId,
           level: parent.level + 1,
@@ -679,25 +788,53 @@ export default function MeshMining3D() {
           parent: parentId,
           children: [],
         };
-
-        newTriangles.set(childId, child);
-        childIds.push(childId);
-        console.log(`✅ Added child ${childId} (level ${child.level})`);
+        
+        childTriangles.push(child);
+        console.info(`[${timestamp}] ✅ Prepared child ${childId} (level ${child.level})`);
       }
 
-      // Mark parent as subdivided
-      newTriangles.set(parentId, {
-        ...parent,
-        status: 'subdivided',
-        clicks: 11,
-        children: childIds,
+      // Step 5: Atomic state update - add all children and finalize parent
+      setTriangles(prevTriangles => {
+        const updated = new Map(prevTriangles);
+        
+        // Update parent with final subdivided state and children list
+        const currentParent = updated.get(parentId);
+        if (currentParent) {
+          updated.set(parentId, {
+            ...currentParent,
+            status: 'subdivided',
+            clicks: 11,
+            children: childIds,
+          });
+        }
+        
+        // Add all child triangles
+        for (const child of childTriangles) {
+          updated.set(child.id, child);
+        }
+        
+        return updated;
       });
 
-      setTriangles(newTriangles);
-      console.log(`✅ Subdivided ${parentId} into ${childIds.length} children`);
+      console.info(`[${timestamp}] ✅ Successfully subdivided ${parentId} into ${childTriangles.length} children`);
 
-    } catch (error) {
-      console.error('❌ Subdivision failed:', error);
+    } catch (error: any) {
+      console.error(`[${timestamp}] ❌ Subdivision failed for ${parentId}:`, error.message || error);
+      
+      // Attempt to revert parent status on error
+      setTriangles(prevTriangles => {
+        const updated = new Map(prevTriangles);
+        const currentParent = updated.get(parentId);
+        if (currentParent && currentParent.status === 'subdivided' && currentParent.children.length === 0) {
+          // Only revert if no children were added
+          updated.set(parentId, {
+            ...currentParent,
+            status: 'mined_out',
+            clicks: 10, // Revert to click 10
+          });
+        }
+        return updated;
+      });
     }
   }
 
