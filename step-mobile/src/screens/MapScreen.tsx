@@ -23,6 +23,7 @@ import * as LocationService from '../lib/location';
 import * as MeshClient from '../lib/mesh-client';
 import * as WalletLib from '../lib/wallet';
 import { Triangle } from '../types';
+import EarthMining3D from '../components/earth/EarthMining3D';
 
 export default function MapScreen() {
   // State
@@ -275,10 +276,20 @@ export default function MapScreen() {
         )}
       </View>
 
-      {/* Map Placeholder - TODO: Replace with actual map */}
-      <View style={styles.mapPlaceholder}>
-        <Text style={styles.mapText}>📍 Map View</Text>
-        <Text style={styles.mapSubtext}>(Mapbox integration coming soon)</Text>
+      {/* 3D Mining Visualization (Phase 4) */}
+      <View style={styles.mapContainer}>
+        <EarthMining3D
+          currentPosition={currentLocation ? {
+            lat: currentLocation.latitude,
+            lon: currentLocation.longitude,
+          } : undefined}
+          triangleLevel={10}
+          autoCentering={true}
+          onError={(error) => {
+            console.error('[MapScreen] 3D visualization error:', error);
+            Alert.alert('3D Error', 'Failed to initialize 3D visualization');
+          }}
+        />
       </View>
 
       {/* Location Info */}
@@ -361,22 +372,12 @@ const styles = StyleSheet.create({
     color: '#CCCCCC',
     marginTop: 4,
   },
-  mapPlaceholder: {
+  mapContainer: {
     flex: 1,
-    backgroundColor: '#F0F0F0',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: '#000000',
+    margin: 10,
     borderWidth: 2,
     borderColor: '#000000',
-    margin: 10,
-  },
-  mapText: {
-    fontSize: 32,
-  },
-  mapSubtext: {
-    fontSize: 12,
-    color: '#666666',
-    marginTop: 8,
   },
   infoPanel: {
     backgroundColor: '#FFFFFF',

@@ -22,7 +22,7 @@ import express from 'express';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { connectToDb, dbHealth, closeDb } from '../core/db.js';
-import meshRouter from './mesh-simple.js';
+import meshRouter from './mesh.js';
 import proofRouter from './proof.js';
 
 // Read version from package.json (CommonJS-compatible path)
