@@ -22,7 +22,9 @@ import { StatusBar } from 'expo-status-bar';
 import * as LocationService from '../lib/location';
 import * as MeshClient from '../lib/mesh-client';
 import * as WalletLib from '../lib/wallet';
+import * as ProofCollector from '../lib/proof-collector';
 import { Triangle, Wallet } from '../types';
+import { ProofSubmissionResponseV2 } from '../types/proof-v2';
 import RawEarthMesh3D from '../components/earth/RawEarthMesh3D';
 
 export default function MapScreen() {
@@ -35,6 +37,7 @@ export default function MapScreen() {
   const [mining, setMining] = useState<boolean>(false);
   const [miningResult, setMiningResult] = useState<'success' | 'failure' | null>(null); // Phase 5: Mining result for flash feedback
   const [fullScreen3D, setFullScreen3D] = useState<boolean>(false);
+  const [lastConfidenceScore, setLastConfidenceScore] = useState<ProofSubmissionResponseV2 | null>(null); // Phase 2.5: Last mining confidence score
   const recenterFnRef = React.useRef<(() => void) | null>(null);
   const refetchActiveFnRef = React.useRef<(() => void) | null>(null);
 
@@ -123,13 +126,14 @@ export default function MapScreen() {
   };
 
   /**
-   * Mine button handler:
+   * Mine button handler (Phase 2.5 with ProofPayloadV2):
    * 1. Validate location accuracy
-   * 2. Build canonical proof payload (Phase 2 format)
-   * 3. Generate nonce for replay protection
-   * 4. Build canonical message and sign with EIP-191
-   * 5. Submit to validator API
-   * 6. Display reward or error with error code
+   * 2. Generate nonce for replay protection
+   * 3. Collect all proof data (device, cell, GNSS, attestation)
+   * 4. Build ProofPayloadV2 with enhanced anti-spoofing data
+   * 5. Sign entire payload with EIP-191
+   * 6. Submit to validator API
+   * 7. Display reward and confidence score breakdown
    */
   const handleMine = async () => {
     if (!currentLocation || !currentTriangle || !wallet) {
@@ -152,39 +156,50 @@ export default function MapScreen() {
       // Each proof must have unique nonce, even for same location/triangle
       const nonce = generateUuid();
       
-      // Get current timestamp in ISO 8601 with milliseconds
-      // Must be UTC and include milliseconds for validator
-      const timestamp = new Date().toISOString();
+      console.log('[MapScreen] Building ProofPayloadV2 with enhanced anti-spoofing data...');
+      
+      // Phase 2.5: Build complete proof payload with device data, cell tower, GNSS, attestation
+      // This collects all available data sources for maximum confidence score
+      const payloadV2 = await ProofCollector.buildProofPayloadV2(
+        wallet.address,
+        currentTriangle.triangleId,
+        {
+          lat: currentLocation.latitude,
+          lon: currentLocation.longitude,
+          alt: currentLocation.altitude ?? undefined, // Convert null to undefined
+          accuracy: currentLocation.accuracy,
+        },
+        nonce
+      );
+      
+      console.log('[MapScreen] ProofPayloadV2 built:', {
+        device: payloadV2.device.model,
+        hasCell: !!payloadV2.cell,
+        hasGnss: payloadV2.gnss?.rawAvailable || false,
+        attestation: payloadV2.attestation.substring(0, 30) + '...',
+      });
 
-      // Build canonical proof payload (Phase 2 format)
-      // CRITICAL: This must match backend ProofPayload interface exactly
-      const payload: MeshClient.ProofPayload = {
-        version: 'STEP-PROOF-v1',
-        account: wallet.address,
-        triangleId: currentTriangle.triangleId,
-        lat: currentLocation.latitude,
-        lon: currentLocation.longitude,
-        accuracy: currentLocation.accuracy,
-        timestamp,
-        nonce,
-      };
-
-      // Build canonical signable message
-      // Format: STEP-PROOF-v1|account:{account}|triangle:{id}|lat:{lat}|lon:{lon}|acc:{acc}|ts:{ts}|nonce:{nonce}
-      const message = MeshClient.buildSignableMessage(payload);
-      console.log('Signing message:', message);
+      // Build signable message (v2 uses JSON stringification)
+      const message = MeshClient.buildSignableMessageV2(payloadV2);
+      console.log('[MapScreen] Signing ProofPayloadV2...');
 
       // Sign with EIP-191 (Ethereum personal_sign)
       const signature = await WalletLib.signMessage(message);
-      console.log('Proof signed:', signature.substring(0, 20) + '...');
+      console.log('[MapScreen] Signature:', signature.substring(0, 20) + '...');
 
-      // Submit proof to validator
-      const result = await MeshClient.submitProof(payload, signature);
+      // Submit proof to validator (Phase 2.5 endpoint with confidence scoring)
+      console.log('[MapScreen] Submitting to Phase 2.5 validator...');
+      const result = await MeshClient.submitProofV2(payloadV2, signature);
       
       // DEBUG: Log full API response
-      console.log('[MapScreen] API Response:', JSON.stringify(result, null, 2));
-      console.log('[MapScreen] Balance from API:', result.ok ? result.balance : 'N/A');
-      console.log('[MapScreen] Reward from API:', result.ok ? result.reward : 'N/A');
+      console.log('[MapScreen] ProofSubmissionResponseV2:', JSON.stringify(result, null, 2));
+      console.log('[MapScreen] Confidence:', result.confidence, '/', 100);
+      console.log('[MapScreen] Confidence Level:', result.confidenceLevel);
+      console.log('[MapScreen] Balance:', result.balance);
+      console.log('[MapScreen] Reward:', result.reward);
+      
+      // Store confidence score for UI display
+      setLastConfidenceScore(result);
       
       // Handle response
       if (result.ok) {
@@ -192,10 +207,23 @@ export default function MapScreen() {
         setMiningResult('success');
         setTimeout(() => setMiningResult(null), 300); // Clear after flash duration
         
-        // Success - display reward and refresh active triangles to update colors
+        // Success - display reward with confidence score breakdown
+        const scoreBreakdown = [
+          `Total Confidence: ${result.confidence}/100 (${result.confidenceLevel})`,
+          '',
+          'Score Breakdown:',
+          `  • Signature: ${result.scores.signature}/20`,
+          `  • GPS Accuracy: ${result.scores.gpsAccuracy}/15`,
+          `  • Speed Gate: ${result.scores.speedGate}/10`,
+          `  • Moratorium: ${result.scores.moratorium}/5`,
+          `  • Attestation: ${result.scores.attestation}/25`,
+          `  • GNSS Raw: ${result.scores.gnssRaw}/15`,
+          `  • Cell Tower: ${result.scores.cellTower}/10`,
+        ].join('\n');
+        
         Alert.alert(
           '🎉 Mining Successful!',
-          `You earned ${result.reward} STEP tokens!\n\nTriangle: ${result.triangleId}\nLevel: ${result.level}\nClicks: ${result.clicks}\n\nNew Balance: ${result.balance} STEP\n\n⚠️ If balance is 0, this is a backend issue - tokens earned but balance not updated in database.`
+          `You earned ${result.reward} STEP tokens!\n\n${scoreBreakdown}\n\nNew Balance: ${result.balance} STEP`
         );
         
         // Refetch active triangles to update click-based colors after mining
@@ -209,11 +237,19 @@ export default function MapScreen() {
         setMiningResult('failure');
         setTimeout(() => setMiningResult(null), 300); // Clear after flash duration
         
-        // Error - display with code for debugging
-        const errorMessage = getErrorMessage(result.code, result.message);
+        // Error - display with confidence breakdown
+        const errorDetails = [
+          result.error || 'Unknown error',
+          '',
+          `Confidence: ${result.confidence}/100 (${result.confidenceLevel})`,
+          '',
+          'Issues detected:',
+          ...(result.reasons || ['No specific reasons provided']).map(r => `  • ${r}`),
+        ].join('\n');
+        
         Alert.alert(
-          'Mining Failed',
-          errorMessage,
+          '❌ Mining Failed',
+          errorDetails,
           [{ text: 'OK' }]
         );
       }
@@ -388,6 +424,34 @@ export default function MapScreen() {
                   <Text style={styles.infoText}>Level: {currentTriangle.level}</Text>
                 </>
               )}
+              
+              {/* Phase 2.5: Confidence Score Display */}
+              {lastConfidenceScore && (
+                <>
+                  <Text style={[styles.infoTitle, styles.spacer]}>Last Proof Security</Text>
+                  <View style={styles.confidenceContainer}>
+                    <Text style={[
+                      styles.confidenceScore,
+                      lastConfidenceScore.confidence >= 90 ? styles.confidenceVeryHigh :
+                      lastConfidenceScore.confidence >= 75 ? styles.confidenceHigh :
+                      lastConfidenceScore.confidence >= 50 ? styles.confidenceMedium :
+                      styles.confidenceLow
+                    ]}>
+                      {lastConfidenceScore.confidence}/100
+                    </Text>
+                    <Text style={styles.confidenceLevel}>
+                      {lastConfidenceScore.confidenceLevel}
+                    </Text>
+                  </View>
+                  <Text style={styles.confidenceBreakdown}>
+                    Sig:{lastConfidenceScore.scores.signature} 
+                    GPS:{lastConfidenceScore.scores.gpsAccuracy} 
+                    Attest:{lastConfidenceScore.scores.attestation} 
+                    GNSS:{lastConfidenceScore.scores.gnssRaw} 
+                    Cell:{lastConfidenceScore.scores.cellTower}
+                  </Text>
+                </>
+              )}
             </View>
           )}
 
@@ -481,7 +545,41 @@ const styles = StyleSheet.create({
     color: '#0066CC',
   },
   spacer: {
-    marginTop: 12,
+    marginTop: 16,
+  },
+  // Phase 2.5: Confidence score UI styles
+  confidenceContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+    gap: 8,
+  },
+  confidenceScore: {
+    fontSize: 24,
+    fontWeight: 'bold',
+  },
+  confidenceVeryHigh: {
+    color: '#00AA00', // Dark green
+  },
+  confidenceHigh: {
+    color: '#88CC00', // Light green
+  },
+  confidenceMedium: {
+    color: '#FF8800', // Orange
+  },
+  confidenceLow: {
+    color: '#CC0000', // Red
+  },
+  confidenceLevel: {
+    fontSize: 12,
+    color: '#666',
+    fontWeight: '600',
+  },
+  confidenceBreakdown: {
+    fontSize: 10,
+    color: '#999',
+    marginTop: 4,
+    fontFamily: 'monospace',
   },
   actions: {
     padding: 10,
