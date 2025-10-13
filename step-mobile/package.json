@@ -17,6 +17,7 @@
     "@react-three/drei": "^10.7.6",
     "@react-three/fiber": "^9.3.0",
     "buffer": "^6.0.3",
+    "crypto-js": "^4.2.0",
     "expo": "~54.0.12",
     "expo-crypto": "^15.0.7",
     "expo-device": "~8.0.9",
@@ -24,6 +25,7 @@
     "expo-location": "^19.0.7",
     "expo-secure-store": "^15.0.7",
     "expo-status-bar": "~3.0.8",
+    "expo-three": "^8.0.0",
     "js-sha3": "^0.9.3",
     "react": "19.1.0",
     "react-dom": "19.1.0",
@@ -38,9 +40,13 @@
     "three": "^0.166.0"
   },
   "devDependencies": {
+    "@types/crypto-js": "^4.2.2",
     "@types/react": "~19.1.0",
     "@types/three": "^0.180.0",
     "typescript": "~5.9.2"
+  },
+  "resolutions": {
+    "three": "0.166.0"
   },
   "private": true
 }

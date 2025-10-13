@@ -18,7 +18,7 @@
  * </Canvas>
  */
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useThree, useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 
@@ -32,10 +32,11 @@ interface CameraTrackerProps {
    * WHY: Allows parent component to track camera for SVG overlay projection.
    * Called at 60 Hz in useFrame loop.
    * 
+   * @param camera - Real Three.js camera object (for projection)
    * @param position - Current camera position (cloned Vector3)
    * @param rotation - Current camera rotation (cloned Euler)
    */
-  onCameraUpdate: (position: THREE.Vector3, rotation: THREE.Euler) => void;
+  onCameraUpdate: (camera: THREE.Camera, position: THREE.Vector3, rotation: THREE.Euler) => void;
 }
 
 /**
@@ -46,14 +47,15 @@ interface CameraTrackerProps {
  * 
  * WHAT:
  * - Accesses Three.js camera via useThree() hook (only works inside <Canvas>)
- * - Clones camera.position and camera.rotation on every frame
- * - Calls onCameraUpdate callback with cloned values (prevent mutation)
+ * - Tracks camera changes and notifies parent only when camera actually moves
+ * - Uses threshold to avoid spam updates on tiny floating-point changes
  * - Invisible component (returns null)
  * 
  * PERFORMANCE:
- * - Runs at 60 Hz (useFrame loop)
- * - Minimal overhead: 2 Vector3 clones per frame (~microseconds)
- * - No rendering, just data extraction
+ * - Checks at render rate but only calls callback on significant changes
+ * - Position threshold: 0.001 units (~6m at Earth scale)
+ * - Rotation threshold: 0.01 radians (~0.57 degrees)
+ * - Typical update rate: 5-10 Hz during interaction, 0 Hz when static
  * 
  * @param props - CameraTracker props
  * @returns null (invisible component)
@@ -63,17 +65,33 @@ export default function CameraTracker({ onCameraUpdate }: CameraTrackerProps) {
   // WHY: useThree() only works inside <Canvas>, provides access to scene/camera/renderer
   const { camera } = useThree();
 
-  // Track camera on every frame (60 Hz)
-  // WHY: Camera position/rotation changes every frame during user interaction
-  // useFrame is called by Three.js before each render
-  useFrame(() => {
-    // Clone position and rotation to prevent mutation
-    // WHY: Parent may store these values, we don't want shared references
-    const position = camera.position.clone();
-    const rotation = camera.rotation.clone();
+  // Store last reported camera state to detect changes
+  // WHY: Only update parent when camera actually moves, not every frame
+  const lastPositionRef = useRef(camera.position.clone());
+  const lastRotationRef = useRef(camera.rotation.clone());
 
-    // Call parent callback with current camera state
-    onCameraUpdate(position, rotation);
+  // Track camera only when it changes significantly
+  // WHY: Camera only changes during user interaction or auto-centering
+  // No need to spam updates at 60 Hz when camera is static
+  useFrame(() => {
+    const position = camera.position;
+    const rotation = camera.rotation;
+
+    // Check if camera moved significantly
+    // WHY: Avoid spam updates from floating-point noise
+    const positionChanged = position.distanceTo(lastPositionRef.current) > 0.001; // ~6m threshold
+    const rotationChanged = Math.abs(rotation.x - lastRotationRef.current.x) > 0.01 ||
+                           Math.abs(rotation.y - lastRotationRef.current.y) > 0.01 ||
+                           Math.abs(rotation.z - lastRotationRef.current.z) > 0.01; // ~0.57° threshold
+
+    if (positionChanged || rotationChanged) {
+      // Camera moved - update parent
+      lastPositionRef.current.copy(position);
+      lastRotationRef.current.copy(rotation);
+
+      // Clone values to prevent mutation
+      onCameraUpdate(camera, position.clone(), rotation.clone());
+    }
   });
 
   // Log initial camera info (debug)

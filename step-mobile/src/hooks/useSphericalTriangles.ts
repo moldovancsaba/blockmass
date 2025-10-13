@@ -158,18 +158,21 @@ export function useSphericalTriangles(
       const triangle = await MeshClient.getTriangleAt(lat, lon, triangleLevel);
       
       // Convert GeoJSON polygon to 3D vertices
-      if (triangle.polygon && triangle.polygon.coordinates) {
+      if (triangle.polygon && triangle.polygon.coordinates && triangle.polygon.coordinates[0]) {
         const vertices = polygonToVector3Array(triangle.polygon.coordinates[0]);
         
-        if (vertices.length === 3) {
+        if (vertices.length >= 3) {
           return {
             ...triangle,
-            vertices: vertices as [THREE.Vector3, THREE.Vector3, THREE.Vector3],
+            vertices: vertices.slice(0, 3) as [THREE.Vector3, THREE.Vector3, THREE.Vector3],
           };
         }
       }
       
-      console.warn('[useSphericalTriangles] Invalid polygon format:', triangle);
+      // FALLBACK: If API doesn't provide polygon, don't render this triangle
+      // This happens when backend returns triangle ID but no geometry
+      console.warn('[useSphericalTriangles] Triangle missing valid polygon data:', triangle.triangleId);
+      console.warn('[useSphericalTriangles] Polygon data:', JSON.stringify(triangle.polygon));
       return null;
     } catch (err) {
       console.error('[useSphericalTriangles] Failed to fetch current triangle:', err);

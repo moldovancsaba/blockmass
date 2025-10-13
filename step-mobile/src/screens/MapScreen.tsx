@@ -22,17 +22,21 @@ import { StatusBar } from 'expo-status-bar';
 import * as LocationService from '../lib/location';
 import * as MeshClient from '../lib/mesh-client';
 import * as WalletLib from '../lib/wallet';
-import { Triangle } from '../types';
-import EarthMining3D from '../components/earth/EarthMining3D';
+import { Triangle, Wallet } from '../types';
+import RawEarthMesh3D from '../components/earth/RawEarthMesh3D';
 
 export default function MapScreen() {
   // State
   const [locationPermission, setLocationPermission] = useState<boolean>(false);
   const [currentLocation, setCurrentLocation] = useState<LocationService.LocationData | null>(null);
   const [currentTriangle, setCurrentTriangle] = useState<Triangle | null>(null);
-  const [wallet, setWallet] = useState<WalletLib.Wallet | null>(null);
+  const [wallet, setWallet] = useState<Wallet | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [mining, setMining] = useState<boolean>(false);
+  const [miningResult, setMiningResult] = useState<'success' | 'failure' | null>(null); // Phase 5: Mining result for flash feedback
+  const [fullScreen3D, setFullScreen3D] = useState<boolean>(false);
+  const recenterFnRef = React.useRef<(() => void) | null>(null);
+  const refetchActiveFnRef = React.useRef<(() => void) | null>(null);
 
   /**
    * Initialize app on mount:
@@ -176,15 +180,35 @@ export default function MapScreen() {
 
       // Submit proof to validator
       const result = await MeshClient.submitProof(payload, signature);
-
+      
+      // DEBUG: Log full API response
+      console.log('[MapScreen] API Response:', JSON.stringify(result, null, 2));
+      console.log('[MapScreen] Balance from API:', result.ok ? result.balance : 'N/A');
+      console.log('[MapScreen] Reward from API:', result.ok ? result.reward : 'N/A');
+      
       // Handle response
       if (result.ok) {
-        // Success - display reward
+        // Phase 5: Trigger success flash feedback
+        setMiningResult('success');
+        setTimeout(() => setMiningResult(null), 300); // Clear after flash duration
+        
+        // Success - display reward and refresh active triangles to update colors
         Alert.alert(
           '🎉 Mining Successful!',
-          `You earned ${result.reward} STEP tokens!\n\nTriangle: ${result.triangleId}\nLevel: ${result.level}\nClicks: ${result.clicks}\n\nNew Balance: ${result.balance} STEP`
+          `You earned ${result.reward} STEP tokens!\n\nTriangle: ${result.triangleId}\nLevel: ${result.level}\nClicks: ${result.clicks}\n\nNew Balance: ${result.balance} STEP\n\n⚠️ If balance is 0, this is a backend issue - tokens earned but balance not updated in database.`
         );
+        
+        // Refetch active triangles to update click-based colors after mining
+        // This ensures the just-mined triangle's color updates immediately
+        if (refetchActiveFnRef.current) {
+          console.log('[MapScreen] Refetching active triangles after successful mining');
+          refetchActiveFnRef.current();
+        }
       } else {
+        // Phase 5: Trigger failure flash feedback
+        setMiningResult('failure');
+        setTimeout(() => setMiningResult(null), 300); // Clear after flash duration
+        
         // Error - display with code for debugging
         const errorMessage = getErrorMessage(result.code, result.message);
         Alert.alert(
@@ -237,6 +261,11 @@ export default function MapScreen() {
         return 'Signature verification failed. Please restart the app and try again.';
       case 'NETWORK_ERROR':
         return 'Network error. Check your internet connection and try again.';
+      case 'INTERNAL_ERROR':
+        if (message.includes('E11000') || message.includes('duplicate key')) {
+          return '⚠️ Triangle subdivision failed (Backend Issue)\n\nThis triangle has reached maximum clicks and needs to subdivide into 4 children, but the backend mesh database is not properly seeded.\n\nTechnical: The backend tried to create a subdivision event with null values, causing a database constraint violation.\n\nThis is a BACKEND issue that requires:\n1. Seeding the mesh database\n2. Fixing subdivision logic\n\nYour mobile app is working correctly!';
+        }
+        return `Backend Internal Error: ${message}`;
       default:
         return `Error: ${message} (Code: ${code})`;
     }
@@ -266,79 +295,128 @@ export default function MapScreen() {
     <View style={styles.container}>
       <StatusBar style="dark" />
 
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.title}>STEP Miner</Text>
-        {wallet && (
-          <Text style={styles.subtitle}>
-            {wallet.address.substring(0, 10)}...{wallet.address.substring(wallet.address.length - 4)}
-          </Text>
-        )}
-      </View>
-
-      {/* 3D Mining Visualization (Phase 4) */}
-      <View style={styles.mapContainer}>
-        <EarthMining3D
-          currentPosition={currentLocation ? {
-            lat: currentLocation.latitude,
-            lon: currentLocation.longitude,
-          } : undefined}
-          triangleLevel={10}
-          autoCentering={true}
-          onError={(error) => {
-            console.error('[MapScreen] 3D visualization error:', error);
-            Alert.alert('3D Error', 'Failed to initialize 3D visualization');
-          }}
-        />
-      </View>
-
-      {/* Location Info */}
-      {currentLocation && (
-        <View style={styles.infoPanel}>
-          <Text style={styles.infoTitle}>Current Location</Text>
-          <Text style={styles.infoText}>
-            Lat: {currentLocation.latitude.toFixed(6)}
-          </Text>
-          <Text style={styles.infoText}>
-            Lon: {currentLocation.longitude.toFixed(6)}
-          </Text>
-          <Text style={styles.infoText}>
-            Accuracy: ±{Math.round(currentLocation.accuracy)}m
-          </Text>
-          {currentTriangle && (
-            <>
-              <Text style={[styles.infoTitle, styles.spacer]}>Current Triangle</Text>
-              <Text style={styles.triangleId}>{currentTriangle.triangleId}</Text>
-              <Text style={styles.infoText}>Level: {currentTriangle.level}</Text>
-            </>
-          )}
+      {/* Full-screen 3D view */}
+      {fullScreen3D ? (
+        <View style={styles.fullScreenContainer}>
+          <RawEarthMesh3D
+            currentPosition={currentLocation ? {
+              lat: currentLocation.latitude,
+              lon: currentLocation.longitude,
+            } : undefined}
+            triangleLevel={10}
+            onRecenterReady={(fn) => { recenterFnRef.current = fn; }}
+            onRefetchActiveReady={(fn) => { refetchActiveFnRef.current = fn; }}
+            isMining={mining}
+            miningResult={miningResult}
+          />
+          
+          {/* Floating controls overlay */}
+          <View style={styles.floatingControls}>
+            <TouchableOpacity
+              style={styles.floatingButton}
+              onPress={() => setFullScreen3D(false)}
+            >
+              <Text style={styles.floatingButtonText}>✕ Exit</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={styles.floatingButton}
+              onPress={() => {
+                if (recenterFnRef.current) {
+                  recenterFnRef.current();
+                } else {
+                  console.warn('Recenter function not ready yet');
+                }
+              }}
+            >
+              <Text style={styles.floatingButtonText}>📍 Re-center</Text>
+            </TouchableOpacity>
+          </View>
         </View>
+      ) : (
+        <>
+          {/* Header */}
+          <View style={styles.header}>
+            <Text style={styles.title}>STEP Miner</Text>
+            {wallet && (
+              <Text style={styles.subtitle}>
+                {wallet.address.substring(0, 10)}...{wallet.address.substring(wallet.address.length - 4)}
+              </Text>
+            )}
+          </View>
+
+          {/* 3D Mining Visualization - RAW THREE.JS WITH SPHERICAL TRIANGLES */}
+          <View style={styles.mapContainer}>
+            <RawEarthMesh3D
+              currentPosition={currentLocation ? {
+                lat: currentLocation.latitude,
+                lon: currentLocation.longitude,
+              } : undefined}
+              triangleLevel={10}
+              onRecenterReady={(fn) => { recenterFnRef.current = fn; }}
+              onRefetchActiveReady={(fn) => { refetchActiveFnRef.current = fn; }}
+              isMining={mining}
+              miningResult={miningResult}
+            />
+            
+            {/* Expand button overlay */}
+            <TouchableOpacity
+              style={styles.expandButton}
+              onPress={() => setFullScreen3D(true)}
+            >
+              <Text style={styles.expandButtonText}>⛶ Full Screen</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Location Info */}
+          {currentLocation && (
+            <View style={styles.infoPanel}>
+              <Text style={styles.infoTitle}>Current Location</Text>
+              <Text style={styles.infoText}>
+                Lat: {currentLocation.latitude.toFixed(6)}
+              </Text>
+              <Text style={styles.infoText}>
+                Lon: {currentLocation.longitude.toFixed(6)}
+              </Text>
+              <Text style={styles.infoText}>
+                Accuracy: ±{Math.round(currentLocation.accuracy)}m
+              </Text>
+              {currentTriangle && (
+                <>
+                  <Text style={[styles.infoTitle, styles.spacer]}>Current Triangle</Text>
+                  <Text style={styles.triangleId}>{currentTriangle.triangleId}</Text>
+                  <Text style={styles.infoText}>Level: {currentTriangle.level}</Text>
+                </>
+              )}
+            </View>
+          )}
+
+          {/* Action Buttons */}
+          <View style={styles.actions}>
+            <TouchableOpacity
+              style={[styles.button, styles.secondaryButton]}
+              onPress={updateLocation}
+              disabled={mining}
+            >
+              <Text style={styles.buttonText}>🔄 Refresh Location</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.button,
+                styles.primaryButton,
+                (mining || !currentTriangle) && styles.buttonDisabled,
+              ]}
+              onPress={handleMine}
+              disabled={mining || !currentTriangle}
+            >
+              <Text style={styles.buttonText}>
+                {mining ? '⏳ Mining...' : '⛏️ MINE'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </>
       )}
-
-      {/* Action Buttons */}
-      <View style={styles.actions}>
-        <TouchableOpacity
-          style={[styles.button, styles.secondaryButton]}
-          onPress={updateLocation}
-          disabled={mining}
-        >
-          <Text style={styles.buttonText}>🔄 Refresh Location</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[
-            styles.button,
-            styles.primaryButton,
-            (mining || !currentTriangle) && styles.buttonDisabled,
-          ]}
-          onPress={handleMine}
-          disabled={mining || !currentTriangle}
-        >
-          <Text style={styles.buttonText}>
-            {mining ? '⏳ Mining...' : '⛏️ MINE'}
-          </Text>
-        </TouchableOpacity>
-      </View>
     </View>
   );
 }
@@ -442,5 +520,45 @@ const styles = StyleSheet.create({
     color: '#CC0000',
     marginBottom: 20,
     textAlign: 'center',
+  },
+  // Full-screen 3D view styles
+  fullScreenContainer: {
+    flex: 1,
+    backgroundColor: '#000000',
+  },
+  floatingControls: {
+    position: 'absolute',
+    top: 60,
+    right: 20,
+    gap: 10,
+  },
+  floatingButton: {
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+    minWidth: 120,
+  },
+  floatingButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: 'bold',
+    textAlign: 'center',
+  },
+  expandButton: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    padding: 8,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#FFFFFF',
+  },
+  expandButtonText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: 'bold',
   },
 });
