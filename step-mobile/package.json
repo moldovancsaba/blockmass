@@ -19,6 +19,7 @@
     "buffer": "^6.0.3",
     "crypto-js": "^4.2.0",
     "expo": "~54.0.12",
+    "expo-cellular": "~8.0.7",
     "expo-crypto": "^15.0.7",
     "expo-device": "~8.0.9",
     "expo-gl": "~16.0.7",
