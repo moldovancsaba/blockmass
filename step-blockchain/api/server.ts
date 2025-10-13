@@ -50,7 +50,7 @@ app.use(express.json());
  */
 app.use((req, res, next) => {
   const origin = req.headers.origin;
-  const allowedOrigins = ['http://localhost:5555', 'http://localhost:3000'];
+  const allowedOrigins = ['http://localhost:5555', 'http://localhost:3000', 'http://localhost:8000'];
   
   if (origin && allowedOrigins.includes(origin)) {
     res.header('Access-Control-Allow-Origin', origin);

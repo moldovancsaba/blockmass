@@ -141,11 +141,15 @@ function NeighborTrianglesMesh({ neighbors }: { neighbors: SphericalTriangle[] }
   // Memoize geometry (only rebuild when neighbors change)
   const geometry = useMemo(() => {
     if (neighbors.length === 0) {
+      console.log('[NeighborTrianglesMesh] No neighbors to render');
       return null;
     }
     
     console.log(`[NeighborTrianglesMesh] Building geometry for ${neighbors.length} triangles`);
-    return createTrianglesGeometry(neighbors);
+    console.log(`[NeighborTrianglesMesh] Sample triangle:`, neighbors[0]);
+    const geom = createTrianglesGeometry(neighbors);
+    console.log(`[NeighborTrianglesMesh] Geometry vertices: ${geom.attributes.position.count}`);
+    return geom;
   }, [neighbors]);
   
   // Don't render if no neighbors
@@ -155,13 +159,18 @@ function NeighborTrianglesMesh({ neighbors }: { neighbors: SphericalTriangle[] }
   
   return (
     <mesh geometry={geometry}>
-      <meshBasicMaterial
-        color="#CCCCCC"
-        transparent={true}
-        opacity={0.6}
-        side={THREE.FrontSide} // Backface culling
+      {/* BRIGHT emissive material - always visible regardless of lighting */}
+      <meshStandardMaterial
+        color="#00FF00" // Bright green for testing
+        emissive="#00FF00" // Self-illuminating green
+        emissiveIntensity={1.0}
+        transparent={false}
+        opacity={1.0}
+        side={THREE.DoubleSide} // Render both sides to catch winding issues
         depthWrite={true}
         depthTest={true}
+        metalness={0.0}
+        roughness={1.0}
       />
     </mesh>
   );
@@ -188,11 +197,15 @@ function CurrentTriangleMesh({
   // Memoize geometry
   const geometry = useMemo(() => {
     if (!currentTriangle) {
+      console.log('[CurrentTriangleMesh] No current triangle to render');
       return null;
     }
     
     console.log(`[CurrentTriangleMesh] Building geometry for triangle: ${currentTriangle.triangleId}`);
-    return createTrianglesGeometry([currentTriangle]);
+    console.log(`[CurrentTriangleMesh] Vertices:`, currentTriangle.vertices);
+    const geom = createTrianglesGeometry([currentTriangle]);
+    console.log(`[CurrentTriangleMesh] Geometry vertices: ${geom.attributes.position.count}`);
+    return geom;
   }, [currentTriangle?.triangleId]);
   
   // Don't render if no current triangle
@@ -202,13 +215,18 @@ function CurrentTriangleMesh({
   
   return (
     <mesh geometry={geometry}>
-      <meshBasicMaterial
-        color="#FFD700" // Gold
-        transparent={true}
-        opacity={0.9}
-        side={THREE.FrontSide} // Backface culling
+      {/* SUPER BRIGHT emissive material - impossible to miss */}
+      <meshStandardMaterial
+        color="#FF0000" // Bright RED for current triangle
+        emissive="#FF0000" // Self-illuminating RED
+        emissiveIntensity={2.0} // EXTRA bright
+        transparent={false}
+        opacity={1.0}
+        side={THREE.DoubleSide} // Render both sides
         depthWrite={true}
         depthTest={true}
+        metalness={0.0}
+        roughness={1.0}
       />
     </mesh>
   );

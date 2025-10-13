@@ -36,6 +36,8 @@ export interface Triangle {
   };
   status?: 'active' | 'partially_mined' | 'exhausted';
   remainingRewards?: number; // STEP tokens left
+  clicks?: number; // Number of successful mines (0-10 before subdivision)
+  state?: 'pending' | 'active' | 'partially_mined' | 'exhausted' | 'subdivided';
 }
 
 // Token types

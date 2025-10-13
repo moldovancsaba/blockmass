@@ -41,7 +41,8 @@ import { isTriangleFrontFacing, latLonToVector3 } from '../../lib/spherical-proj
  * @param neighbors - Neighbor spherical triangles
  * @param currentTriangle - Current spherical triangle (highlighted)
  * @param userPosition - User's GPS position (for marker)
- * @param cameraPosition - Three.js camera position
+ * @param camera - Real Three.js camera from CameraTracker (WHY: Must use real camera for accurate projection with rotation)
+ * @param cameraPosition - Three.js camera position (for backface culling)
  * @param width - Screen/Canvas width in pixels
  * @param height - Screen/Canvas height in pixels
  */
@@ -49,6 +50,7 @@ export interface SvgTriangleBordersProps {
   neighbors: SphericalTriangle[];
   currentTriangle: SphericalTriangle | null;
   userPosition?: { lat: number; lon: number };
+  camera: THREE.Camera; // WHY: Real camera accounts for sphere rotation (auto-centering)
   cameraPosition: THREE.Vector3;
   width: number;
   height: number;
@@ -283,7 +285,8 @@ function CurrentBorder({
       return null;
     }
     
-    console.log(`[CurrentBorder] Current triangle visible`);
+    // Debug logging disabled to prevent excessive output at 60 Hz
+    // console.log(`[CurrentBorder] Current triangle visible`);
     return pointsToPath(projected);
   }, [currentTriangle, camera, cameraPosition, width, height]);
   
@@ -336,7 +339,8 @@ function UserMarker({
     // Project to screen
     const projected = project3DToScreen(position3D, camera, width, height);
     
-    console.log(`[UserMarker] User at screen (${projected?.x.toFixed(0)}, ${projected?.y.toFixed(0)})`);
+    // Debug logging disabled to prevent excessive output at 60 Hz
+    // console.log(`[UserMarker] User at screen (${projected?.x.toFixed(0)}, ${projected?.y.toFixed(0)})`);
     return projected;
   }, [userPosition, camera, width, height]);
   
@@ -388,6 +392,10 @@ function UserMarker({
  * - Backface culling reduces draw count
  * - All computations happen in useMemo (not per-frame)
  * 
+ * CRITICAL: Must use real camera from Three.js, not create new one!
+ * WHY: Sphere rotation (auto-centering) changes camera's world matrix.
+ * Creating new camera doesn't have correct rotation, causing projection mismatch.
+ * 
  * @param props - Triangles, user position, camera, screen dimensions
  * @returns Absolute-positioned SVG overlay
  */
@@ -395,24 +403,19 @@ export default function SvgTriangleBorders({
   neighbors,
   currentTriangle,
   userPosition,
+  camera, // WHY: Use real camera from Three.js scene (includes rotation)
   cameraPosition,
   width,
   height,
 }: SvgTriangleBordersProps) {
-  // Create a mock camera object for projection
-  // In real integration, we'll get actual camera from Three.js context
-  const camera = useMemo(() => {
-    const cam = new THREE.PerspectiveCamera(50, width / height, 0.1, 100);
-    cam.position.copy(cameraPosition);
-    cam.lookAt(0, 0, 0); // Look at sphere center
-    cam.updateMatrixWorld();
-    return cam;
-  }, [cameraPosition, width, height]);
+  // No need to create camera - we receive the real one from CameraTracker
+  // WHY: Real camera includes all transformations (position + rotation from auto-centering)
   
-  console.log(
-    `[SvgTriangleBorders] Rendering overlay: ${neighbors.length} neighbors, ` +
-    `${currentTriangle ? 1 : 0} current, user ${userPosition ? 'present' : 'absent'}`
-  );
+  // Debug logging disabled to prevent excessive output at 60 Hz
+  // console.log(
+  //   `[SvgTriangleBorders] Rendering overlay: ${neighbors.length} neighbors, ` +
+  //   `${currentTriangle ? 1 : 0} current, user ${userPosition ? 'present' : 'absent'}`
+  // );
   
   return (
     <View style={styles.overlay} pointerEvents="none">

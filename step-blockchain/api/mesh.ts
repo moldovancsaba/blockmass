@@ -38,6 +38,7 @@ import {
   triangleCountAtLevel,
   TriangleId,
 } from '../core/mesh/addressing.js';
+import { Triangle } from '../core/state/schemas.js';
 
 const router = express.Router();
 
@@ -82,6 +83,7 @@ function errorResponse(code: string, message: string) {
  * - lat: Latitude (-90 to +90)
  * - lon: Longitude (-180 to +180)
  * - level: Subdivision level (1-21)
+ * - includePolygon: Optional, if 'true' include polygon coordinates
  * 
  * Response:
  * {
@@ -92,13 +94,14 @@ function errorResponse(code: string, message: string) {
  *     "level": 10,
  *     "path": [0, 1, 3, 2, ...],
  *     "centroid": { "type": "Point", "coordinates": [lon, lat] },
+ *     "polygon": { "type": "Polygon", "coordinates": [...] }, // If includePolygon=true
  *     "estimatedSideLength": 15625
  *   }
  * }
  */
 router.get('/triangleAt', (req: Request, res: Response) => {
   try {
-    const { lat, lon, level } = req.query;
+    const { lat, lon, level, includePolygon } = req.query;
 
     // Validate inputs
     if (!lat || !lon || !level) {
@@ -131,16 +134,22 @@ router.get('/triangleAt', (req: Request, res: Response) => {
     const centroid = triangleIdToCentroid(triangleId);
     const sideLength = estimateSideLength(triangleId.level);
 
-    res.json(
-      successResponse({
-        triangleId: encoded,
-        face: triangleId.face,
-        level: triangleId.level,
-        path: triangleId.path,
-        centroid,
-        estimatedSideLength: Math.round(sideLength),
-      })
-    );
+    // Build response
+    const result: any = {
+      triangleId: encoded,
+      face: triangleId.face,
+      level: triangleId.level,
+      path: triangleId.path,
+      centroid,
+      estimatedSideLength: Math.round(sideLength),
+    };
+
+    // Optionally include polygon geometry (for mobile app 3D rendering)
+    if (includePolygon === 'true') {
+      result.polygon = triangleIdToPolygon(triangleId);
+    }
+
+    res.json(successResponse(result));
   } catch (error: any) {
     res.status(500).json(
       errorResponse('INTERNAL_ERROR', error.message || 'Unknown error')
@@ -582,6 +591,108 @@ router.get('/stats', (req: Request, res: Response) => {
   } catch (error: any) {
     res.status(500).json(
       errorResponse('INTERNAL_ERROR', error.message || 'Stats failed')
+    );
+  }
+});
+
+/**
+ * GET /mesh/active
+ * 
+ * Fetch all active spherical triangles at a given level with their mining state.
+ * This endpoint queries MongoDB to return triangles that have been mined with their click counts.
+ * 
+ * Why this exists:
+ * - Mobile app needs to visualize all active triangles with color gradients based on clicks (0-10)
+ * - Unlike geometric endpoints (triangleAt, search), this returns actual mining state from database
+ * - Enables full mesh visualization showing mining progress across the planet
+ * 
+ * Query params:
+ * - level: Subdivision level (1-21)
+ * - maxResults: Maximum triangles to return (default: 512, max: 10000)
+ * - includePolygon: If 'true', include full polygon GeoJSON for 3D rendering
+ * 
+ * Response:
+ * {
+ *   "ok": true,
+ *   "result": {
+ *     "level": 10,
+ *     "count": 156,
+ *     "triangles": [
+ *       {
+ *         "triangleId": "STEP-TRI-v1:...",
+ *         "clicks": 7,
+ *         "state": "partially_mined",
+ *         "centroid": { "type": "Point", "coordinates": [lon, lat] },
+ *         "polygon": { "type": "Polygon", "coordinates": [...] }  // If includePolygon=true
+ *       },
+ *       ...
+ *     ]
+ *   }
+ * }
+ */
+router.get('/active', async (req: Request, res: Response) => {
+  try {
+    const { level, maxResults, includePolygon } = req.query;
+
+    // Validate level parameter (required)
+    if (!level) {
+      return res.status(400).json(
+        errorResponse('MISSING_PARAMS', 'Required: level')
+      );
+    }
+
+    const levelNum = parseInt(level as string, 10);
+    if (isNaN(levelNum) || levelNum < 1 || levelNum > 21) {
+      return res.status(400).json(
+        errorResponse('INVALID_LEVEL', 'level must be 1-21')
+      );
+    }
+
+    // Parse maxResults with sensible defaults
+    // Default 512 matches the frontend POC's max visible triangles rule
+    const maxResultsNum = maxResults
+      ? Math.min(parseInt(maxResults as string, 10), 10000)
+      : 512;
+
+    // Query MongoDB for active/partially_mined triangles at this level
+    // Only return triangles that have been mined (clicks > 0) to avoid returning entire icosahedron
+    const triangles = await Triangle.find({
+      level: levelNum,
+      state: { $in: ['active', 'partially_mined'] },
+      clicks: { $gt: 0 }, // Only triangles that have been clicked
+    })
+      .select('_id clicks state centroid polygon') // Only fields needed for visualization
+      .limit(maxResultsNum)
+      .lean() // Return plain JS objects (faster)
+      .exec();
+
+    // Format response to match mobile app expectations
+    const formattedTriangles = triangles.map((tri: any) => {
+      const result: any = {
+        triangleId: tri._id,
+        clicks: tri.clicks,
+        state: tri.state,
+        centroid: tri.centroid,
+      };
+
+      // Include polygon if requested (needed for 3D mesh rendering)
+      if (includePolygon === 'true') {
+        result.polygon = tri.polygon;
+      }
+
+      return result;
+    });
+
+    res.json(
+      successResponse({
+        level: levelNum,
+        count: formattedTriangles.length,
+        triangles: formattedTriangles,
+      })
+    );
+  } catch (error: any) {
+    res.status(500).json(
+      errorResponse('INTERNAL_ERROR', error.message || 'Failed to fetch active triangles')
     );
   }
 });

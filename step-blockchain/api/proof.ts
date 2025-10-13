@@ -659,60 +659,76 @@ router.post('/submit', async (req: Request, res: Response) => {
             
             // Get 4 child triangle IDs (adds one path digit to each)
             const childIds = getChildrenIds(parentId);
+            const childTriangleIds = childIds.map(id => encodeTriangleId(id));
             
-            // Create child triangle documents
-            const childTriangles = childIds.map((childId) => {
-              // Compute polygon and centroid using Phase 1 utilities
-              const polygon = triangleIdToPolygon(childId);
-              const centroid = triangleIdToCentroid(childId);
-              
-              // Encode child ID to STEP-TRI-v1 string format
-              const childTriangleId = encodeTriangleId(childId);
-              
-              return new Triangle({
-                _id: childTriangleId,
-                face: childId.face,
-                level: childId.level,
-                pathEncoded: childId.path.join(''),
-                parentId: triangleId,
-                childrenIds: [],
-                state: 'active',
-                clicks: 0,
-                moratoriumStartAt: new Date(),
-                lastClickAt: null,
-                centroid,
-                polygon,
+            // Check if children already exist (from previous partial subdivision)
+            const existingChildren = await Triangle.find({ _id: { $in: childTriangleIds } }).session(session);
+            
+            if (existingChildren.length > 0) {
+              console.warn(`[${timestamp}] Subdivision already partially complete: ${existingChildren.length}/4 children exist`);
+              // Update parent state to subdivided and set children IDs
+              triangle.state = 'subdivided';
+              triangle.childrenIds = childTriangleIds;
+              await triangle.save({ session });
+              console.log(`[${timestamp}] Parent state updated to subdivided (children already exist)`);
+            } else {
+              // Create child triangle documents
+              const childTriangles = childIds.map((childId) => {
+                // Compute polygon and centroid using Phase 1 utilities
+                const polygon = triangleIdToPolygon(childId);
+                const centroid = triangleIdToCentroid(childId);
+                
+                // Encode child ID to STEP-TRI-v1 string format
+                const childTriangleId = encodeTriangleId(childId);
+                
+                return new Triangle({
+                  _id: childTriangleId,
+                  face: childId.face,
+                  level: childId.level,
+                  pathEncoded: childId.path.join(''),
+                  parentId: triangleId,
+                  childrenIds: [],
+                  state: 'active',
+                  clicks: 0,
+                  moratoriumStartAt: new Date(),
+                  lastClickAt: null,
+                  centroid,
+                  polygon,
+                });
               });
-            });
-            
-            // Save all 4 child triangles
-            await Triangle.insertMany(childTriangles, { session });
-            
-            // Update parent triangle: mark as subdivided
-            triangle.state = 'subdivided';
-            triangle.childrenIds = childTriangles.map(t => t._id);
-            await triangle.save({ session });
-            
-            // Create subdivision event for audit trail
-            const subdivisionEventId = `subdivision-${Date.now()}-${Math.random().toString(36).substring(7)}`;
-            const subdivisionEvent = new TriangleEvent({
-              _id: subdivisionEventId,
-              triangleId,
-              eventType: 'subdivide',
-              timestamp: new Date(),
-              account: null,
-              nonce: null,
-              signature: null,
-              payload: {
-                parentId: triangleId,
-                childrenIds: triangle.childrenIds,
-                level: parentId.level,
-                newLevel: parentId.level + 1,
-              },
-            });
-            await subdivisionEvent.save({ session });
-            
-            console.log(`[${timestamp}] Subdivision complete: ${triangleId} → 4 children at level ${parentId.level + 1}`);
+              
+              // Save all 4 child triangles
+              await Triangle.insertMany(childTriangles, { session });
+              
+              // Update parent triangle: mark as subdivided
+              triangle.state = 'subdivided';
+              triangle.childrenIds = childTriangles.map(t => t._id);
+              await triangle.save({ session });
+              
+              // Create subdivision event for audit trail
+              // NOTE: Use system account and event ID as nonce to satisfy unique constraint
+              // The database has a unique index on (account, nonce) which doesn't allow
+              // multiple null values. Using 'system' account and unique event ID as nonce.
+              const subdivisionEventId = `subdivision-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+              const subdivisionEvent = new TriangleEvent({
+                _id: subdivisionEventId,
+                triangleId,
+                eventType: 'subdivide',
+                timestamp: new Date(),
+                account: 'system',  // System account for subdivision events
+                nonce: subdivisionEventId,  // Use event ID as nonce (guaranteed unique)
+                signature: null,
+                payload: {
+                  parentId: triangleId,
+                  childrenIds: triangle.childrenIds,
+                  level: parentId.level,
+                  newLevel: parentId.level + 1,
+                },
+              });
+              await subdivisionEvent.save({ session });
+              
+              console.log(`[${timestamp}] Subdivision complete: ${triangleId} → 4 children at level ${parentId.level + 1}`);
+            }
           } catch (subdivisionError) {
             console.error(`[${timestamp}] Subdivision failed:`, subdivisionError);
             throw subdivisionError; // Rollback transaction on subdivision failure

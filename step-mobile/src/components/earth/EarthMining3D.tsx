@@ -91,9 +91,10 @@ export default function EarthMining3D({
     height: Dimensions.get('window').height,
   });
 
-  // Camera position (updated from CameraTracker in SphereMesh3D)
-  // WHY: Need real camera position for accurate SVG projection
-  // Phase 3 used fixed estimate (0,0,1.5), Phase 4 uses real camera
+  // Camera state (updated from CameraTracker in SphereMesh3D)
+  // WHY: Need real camera object for accurate SVG projection (includes rotation)
+  // Phase 3 used fixed estimate camera, Phase 4 uses real camera from Three.js
+  const [camera, setCamera] = useState<THREE.Camera | null>(null);
   const [cameraPosition, setCameraPosition] = useState(new THREE.Vector3(0, 0, 1.5));
   const [cameraRotation, setCameraRotation] = useState(new THREE.Euler());
 
@@ -121,8 +122,9 @@ export default function EarthMining3D({
   });
 
   // Handle camera updates from CameraTracker (Phase 4)
-  // WHY: Real camera position needed for accurate SVG projection
-  const handleCameraUpdate = (position: THREE.Vector3, rotation: THREE.Euler) => {
+  // WHY: Real camera object needed for accurate SVG projection with rotation
+  const handleCameraUpdate = (cam: THREE.Camera, position: THREE.Vector3, rotation: THREE.Euler) => {
+    setCamera(cam);
     setCameraPosition(position);
     setCameraRotation(rotation);
   };
@@ -139,11 +141,11 @@ export default function EarthMining3D({
     return () => subscription?.remove();
   }, []);
 
-  // Log render
-  console.log(
-    `[EarthMining3D] Rendering: ${triangleCount} triangles, ` +
-    `camera at (${cameraPosition.x.toFixed(2)}, ${cameraPosition.y.toFixed(2)}, ${cameraPosition.z.toFixed(2)})`
-  );
+  // Debug logging disabled to prevent excessive output at 60 Hz
+  // console.log(
+  //   `[EarthMining3D] Rendering: ${triangleCount} triangles, ` +
+  //   `camera at (${cameraPosition.x.toFixed(2)}, ${cameraPosition.y.toFixed(2)}, ${cameraPosition.z.toFixed(2)})`
+  // );
 
   return (
     <View style={styles.container}>
@@ -158,11 +160,12 @@ export default function EarthMining3D({
       />
 
       {/* SVG overlay (borders + user marker) */}
-      {currentPosition && (
+      {currentPosition && camera && (
         <SvgTriangleBorders
           neighbors={neighbors}
           currentTriangle={currentTriangle}
           userPosition={currentPosition}
+          camera={camera}
           cameraPosition={cameraPosition}
           width={dimensions.width}
           height={dimensions.height}

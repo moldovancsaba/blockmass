@@ -113,6 +113,10 @@ export function useAutoCenter(options: AutoCenterOptions): THREE.Quaternion {
   const animationRef = useRef<number | null>(null);
   const targetRotationRef = useRef<THREE.Quaternion>(new THREE.Quaternion());
 
+  // Memoize camera direction to prevent unnecessary recalculations
+  // WHY: Avoid re-creating Vector3 on every render
+  const cameraDirectionRef = useRef(cameraDirection);
+
   // Compute target rotation when user position changes
   useEffect(() => {
     if (!enabled) {
@@ -129,56 +133,31 @@ export function useAutoCenter(options: AutoCenterOptions): THREE.Quaternion {
     // Result: When applied to sphere, user position will face camera
     const targetRotation = new THREE.Quaternion().setFromUnitVectors(
       userPos3D,
-      cameraDirection
+      cameraDirectionRef.current
     );
 
     // Store target in ref (avoid triggering re-render)
     targetRotationRef.current = targetRotation;
 
-    console.log('[useAutoCenter] Target rotation updated for position:', userPosition);
-    console.log('[useAutoCenter] User 3D:', userPos3D.toArray());
-    console.log('[useAutoCenter] Target quaternion:', targetRotation.toArray());
-  }, [userPosition.lat, userPosition.lon, enabled, cameraDirection]);
+    // Debug logging disabled to prevent excessive output
+    // console.log('[useAutoCenter] Target rotation updated for position:', userPosition);
+    // console.log('[useAutoCenter] User 3D:', userPos3D.toArray());
+    // console.log('[useAutoCenter] Target quaternion:', targetRotation.toArray());
+  }, [userPosition.lat, userPosition.lon, enabled]);
 
   // Animation loop: smooth slerp toward target
+  // WHY: Disabled - causing infinite loop and excessive re-renders
+  // Instead, we'll use useFrame in the component for animation
+  // This hook now returns the target rotation directly for immediate application
   useEffect(() => {
     if (!enabled) {
-      // Auto-centering disabled, no animation
-      if (animationRef.current !== null) {
-        cancelAnimationFrame(animationRef.current);
-        animationRef.current = null;
-      }
       return;
     }
 
-    // Start animation loop
-    const animate = () => {
-      setCurrentRotation((current) => {
-        // Clone current to avoid mutation
-        const next = current.clone();
-
-        // Slerp toward target
-        // WHY: Spherical linear interpolation for smooth rotation
-        // alpha = speed (0.05 = 5% per frame toward target)
-        next.slerp(targetRotationRef.current, speed);
-
-        return next;
-      });
-
-      // Continue animation
-      animationRef.current = requestAnimationFrame(animate);
-    };
-
-    animationRef.current = requestAnimationFrame(animate);
-
-    // Cleanup on unmount or disabled
-    return () => {
-      if (animationRef.current !== null) {
-        cancelAnimationFrame(animationRef.current);
-        animationRef.current = null;
-      }
-    };
-  }, [enabled, speed]);
+    // Set rotation directly to target (no animation for now)
+    // TODO: Implement smooth slerp animation without causing infinite loop
+    setCurrentRotation(targetRotationRef.current.clone());
+  }, [userPosition.lat, userPosition.lon, enabled]);
 
   // Return current rotation quaternion
   // WHY: Apply to sphere mesh: <mesh quaternion={rotation}>
