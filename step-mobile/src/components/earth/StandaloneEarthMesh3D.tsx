@@ -159,6 +159,7 @@ export default function StandaloneEarthMesh3D({
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
   const movedRef = useRef<boolean>(false);
   const didDoubleTapRef = useRef<boolean>(false);
+  const lastVisibilityZoomRef = useRef<number>(INITIAL_ZOOM); // Track zoom for visibility updates
   
   // Pixel-locked rotation state: tracks 3D anchor point on sphere surface
   // What: Store the initial touch point projected onto the sphere
@@ -643,8 +644,15 @@ export default function StandaloneEarthMesh3D({
             // Clamp to min/max zoom limits
             newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, newZoom));
             
-            // Allow zoom - validation was preventing zooming in (backwards logic)
+            // Update zoom
             zoomRef.current = newZoom;
+            
+            // Trigger visibility update if zoom changed significantly (>10%)
+            const zoomChange = Math.abs(newZoom - lastVisibilityZoomRef.current) / lastVisibilityZoomRef.current;
+            if (zoomChange > 0.1) {
+              lastVisibilityZoomRef.current = newZoom;
+              setRenderTrigger(Date.now());
+            }
           }
         } else if (touches.length === 1 && lastTouchRef.current) {
           // Single-finger drag: pixel-locked rotation using raycasting
@@ -740,12 +748,14 @@ export default function StandaloneEarthMesh3D({
         initialPinchDistanceRef.current = null;
         anchorPointRef.current = null;
         
-        // CRITICAL: Force visibility update with CURRENT rotation after gesture ends
-        // Why: Ensures any rotation that happened during gesture is reflected in visibility
+        // CRITICAL: Force visibility update after gesture ends
+        // Update both rotation and zoom state
         const currentRotX = rotationRef.current.x;
         const currentRotY = rotationRef.current.y;
-        console.log(`[Gesture] Released - forcing visibility update with rotation x=${currentRotX.toFixed(3)}, y=${currentRotY.toFixed(3)}`);
+        const currentZoom = zoomRef.current;
+        console.log(`[Gesture] Released - forcing visibility update: rotation x=${currentRotX.toFixed(3)}, y=${currentRotY.toFixed(3)}, zoom=${currentZoom.toFixed(2)}`);
         setMeshRotation({ x: currentRotX, y: currentRotY });
+        lastVisibilityZoomRef.current = currentZoom; // Sync zoom tracker
       },
     })
   ).current;
@@ -887,6 +897,22 @@ export default function StandaloneEarthMesh3D({
 
     // Build camera frustum
     const camera = cameraRef.current;
+    
+    // CRITICAL: Update camera matrices before calculating frustum
+    // Why: Camera position/FOV change in render loop, but we're in useEffect
+    // Solution: Force camera matrix update and use current zoom/FOV
+    const currentZoom = zoomRef.current;
+    camera.position.z = currentZoom;
+    
+    // Update FOV to match render loop calculation
+    const zoomT = (currentZoom - MIN_ZOOM) / (MAX_ZOOM - MIN_ZOOM);
+    const fov = MIN_FOV + (MAX_FOV - MIN_FOV) * zoomT;
+    camera.fov = fov;
+    camera.updateProjectionMatrix();
+    camera.updateMatrixWorld(true); // Force world matrix update
+    
+    console.log(`[Visibility] Camera state: zoom=${currentZoom.toFixed(2)}, FOV=${fov.toFixed(1)}°, pos=(${camera.position.x.toFixed(2)}, ${camera.position.y.toFixed(2)}, ${camera.position.z.toFixed(2)})`);
+    
     const projScreenMatrix = new THREE.Matrix4().multiplyMatrices(
       camera.projectionMatrix,
       camera.matrixWorldInverse
@@ -925,6 +951,10 @@ export default function StandaloneEarthMesh3D({
     const visibleTriangles: MeshTriangle[] = [];
     let backfaceCulled = 0;
     let frustumCulled = 0;
+    
+    // Debug GPS triangle specifically
+    const gpsTriInActives = actives.find(t => t.id === gpsTriangleId);
+    const debugGPS = !!gpsTriInActives;
 
     for (const tri of actives) {
       const v = tri.vertices;
@@ -941,8 +971,17 @@ export default function StandaloneEarthMesh3D({
       centroid.applyMatrix4(rotationMatrix); // Apply mesh rotation
       centroid.normalize();
       const facing = centroid.dot(camDir);
+      
+      // Debug GPS triangle
+      if (debugGPS && tri.id === gpsTriangleId) {
+        console.log(`[GPS Debug] Backface test: facing=${facing.toFixed(3)}, camDir=(${camDir.x.toFixed(2)}, ${camDir.y.toFixed(2)}, ${camDir.z.toFixed(2)}), centroid=(${centroid.x.toFixed(2)}, ${centroid.y.toFixed(2)}, ${centroid.z.toFixed(2)})`);
+      }
+      
       if (facing >= 0) {
         backfaceCulled++;
+        if (debugGPS && tri.id === gpsTriangleId) {
+          console.log(`[GPS Debug] ❌ BACKFACE CULLED`);
+        }
         continue; // Back-facing (pointing same direction as camera), skip
       }
 
@@ -971,9 +1010,21 @@ export default function StandaloneEarthMesh3D({
       const radius = Math.max(r0, r1, r2);
       const sphere = new THREE.Sphere(centerScaled, radius);
       
+      // Debug GPS triangle
+      if (debugGPS && tri.id === gpsTriangleId) {
+        console.log(`[GPS Debug] Frustum test: center=(${centerScaled.x.toFixed(2)}, ${centerScaled.y.toFixed(2)}, ${centerScaled.z.toFixed(2)}), radius=${radius.toFixed(3)}`);
+      }
+      
       if (!frustum.intersectsSphere(sphere)) {
         frustumCulled++;
+        if (debugGPS && tri.id === gpsTriangleId) {
+          console.log(`[GPS Debug] ❌ FRUSTUM CULLED`);
+        }
         continue; // Not in view, skip
+      }
+      
+      if (debugGPS && tri.id === gpsTriangleId) {
+        console.log(`[GPS Debug] ✅ VISIBLE`);
       }
 
       visibleTriangles.push(tri);
