@@ -270,43 +270,35 @@ export default function StandaloneEarthMesh3D({
       const lat = currentPosition.lat;
       const lon = currentPosition.lon;
       
-      // Convert GPS to unit vector
-      const gpsPoint = sphericalToCartesian(lat, lon);
-      const gpsVector = new THREE.Vector3(gpsPoint.x, gpsPoint.y, gpsPoint.z);
+      console.log(`[GPS Init] GPS: ${lat.toFixed(4)}°, ${lon.toFixed(4)}°`);
       
-      console.log(`[GPS Init] GPS point (lat=${lat.toFixed(4)}, lon=${lon.toFixed(4)}):`);
-      console.log(`  Cartesian: (${gpsVector.x.toFixed(3)}, ${gpsVector.y.toFixed(3)}, ${gpsVector.z.toFixed(3)})`);
+      // Simple Euler angle calculation to center GPS at screen center
+      // Camera at (0,0,+zoom) looks along -Z axis toward (0,0,-1)
+      // We want GPS point to appear at screen center
+      // 
+      // Strategy: Rotate mesh so GPS point moves to (0, 0, -1)
+      // 1. Rotate around Y by -longitude (brings meridian to front)
+      // 2. Rotate around X to bring latitude to equator (screen center)
       
-      // Camera looks along -Z axis, so we want GPS point at (0, 0, -1)
-      const targetVector = new THREE.Vector3(0, 0, -1);
+      const latRad = lat * Math.PI / 180;
+      const lonRad = lon * Math.PI / 180;
       
-      // Calculate rotation needed to align GPS vector with target (camera direction)
-      // Method: Use quaternion.setFromUnitVectors(from, to)
-      // CRITICAL: Rotate FROM target TO gpsVector (inverse rotation)
-      // Why: We're rotating the MESH, not the camera, so logic is inverted
-      const quaternion = new THREE.Quaternion().setFromUnitVectors(targetVector, gpsVector);
+      // Y rotation: -longitude brings the GPS meridian to the front (XZ plane at y=0)
+      const rotY = -lonRad;
       
-      // Convert quaternion to Euler angles (X, Y rotations)
-      const euler = new THREE.Euler().setFromQuaternion(quaternion, 'YXZ');
+      // X rotation: We want point to move from latitude to equator (screen center)
+      // After Y rotation, point is at angle `lat` from equator in XZ plane
+      // Screen center is at z=-1 (negative Z axis), which is 0° latitude
+      // So we need to rotate by -latitude to bring point to screen center
+      const rotX = -latRad;
       
-      rotationRef.current = { x: euler.x, y: euler.y };
+      rotationRef.current = { x: rotX, y: rotY };
       
-      console.log(`  Target: camera direction (0, 0, -1)`);
-      console.log(`  Rotation: x=${euler.x.toFixed(3)} (${(euler.x * 180 / Math.PI).toFixed(1)}°), y=${euler.y.toFixed(3)} (${(euler.y * 180 / Math.PI).toFixed(1)}°)`);
-      
-      // Verify rotation by applying it to GPS vector
-      const testVector = gpsVector.clone();
-      const rotMatrix = new THREE.Matrix4();
-      rotMatrix.makeRotationY(euler.y);
-      const rotX = new THREE.Matrix4();
-      rotX.makeRotationX(euler.x);
-      rotMatrix.multiply(rotX);
-      testVector.applyMatrix4(rotMatrix);
-      console.log(`  Verification: rotated GPS → (${testVector.x.toFixed(3)}, ${testVector.y.toFixed(3)}, ${testVector.z.toFixed(3)}) [should be near (0,0,-1)]`);
+      console.log(`  Rotation: Y=${(rotY * 180 / Math.PI).toFixed(1)}° (lon), X=${(rotX * 180 / Math.PI).toFixed(1)}° (lat)`);
       
       // CRITICAL: Trigger visibility recalculation with new rotation
       setTimeout(() => {
-        setMeshRotation({ x: euler.x, y: euler.y });
+        setMeshRotation({ x: rotX, y: rotY });
       }, 100);
     }
   }, [currentPosition, meshState]);
@@ -440,12 +432,9 @@ export default function StandaloneEarthMesh3D({
         // Solution: Use inverse rotation matrix to transform hit point to local space
         const hitLocal = hit.clone();
         
-        // Build rotation matrix matching mesh rotation (Y then X)
-        const rotationMatrix = new THREE.Matrix4();
-        rotationMatrix.makeRotationY(rotationRef.current.y);
-        const rotationX = new THREE.Matrix4();
-        rotationX.makeRotationX(rotationRef.current.x);
-        rotationMatrix.multiply(rotationX);
+        // Build rotation matrix matching mesh rotation using Euler angles
+        const euler = new THREE.Euler(rotationRef.current.x, rotationRef.current.y, 0, 'XYZ');
+        const rotationMatrix = new THREE.Matrix4().makeRotationFromEuler(euler);
         
         // Apply inverse rotation
         const inverseMatrix = rotationMatrix.clone().invert();
@@ -910,15 +899,14 @@ export default function StandaloneEarthMesh3D({
     camera.getWorldDirection(camDir);
     
     // Build rotation matrix to transform triangle vertices to world space
-    // CRITICAL: Must use ACTUAL current rotation from ref, not potentially stale state
-    // Why: Triangles in meshState are unrotated, but mesh is rotated in world space
+    // CRITICAL: Must match Three.js Euler angle application order
+    // Three.js default Euler order is 'XYZ', so we apply: Y rotation, then X rotation, then Z (unused)
+    // But when we set mesh.rotation.x and mesh.rotation.y, Three.js uses its internal order
+    // SOLUTION: Use Euler directly with explicit order matching how mesh rotation works
     console.log(`[Visibility] Using rotation: x=${actualRotX.toFixed(3)}, y=${actualRotY.toFixed(3)}`);
     
-    const rotationMatrix = new THREE.Matrix4();
-    rotationMatrix.makeRotationY(actualRotY);
-    const rotationX = new THREE.Matrix4();
-    rotationX.makeRotationX(actualRotX);
-    rotationMatrix.multiply(rotationX);
+    const euler = new THREE.Euler(actualRotX, actualRotY, 0, 'XYZ');
+    const rotationMatrix = new THREE.Matrix4().makeRotationFromEuler(euler);
 
     // Find VISIBLE triangles (in frustum + facing camera)
     // CRITICAL: Use meshStateRef.current for latest state (closure issue)
@@ -1011,7 +999,9 @@ export default function StandaloneEarthMesh3D({
       
       if (centerPoint) {
         // Apply inverse rotation to get unrotated coordinates
-        const inverseMatrix = rotationMatrix.clone().invert();
+        const euler = new THREE.Euler(actualRotX, actualRotY, 0, 'XYZ');
+        const rotMatrix = new THREE.Matrix4().makeRotationFromEuler(euler);
+        const inverseMatrix = rotMatrix.clone().invert();
         const localPoint = centerPoint.clone().applyMatrix4(inverseMatrix).normalize();
         
         // Convert to lat/lon using icosahedron coordinate system
