@@ -76,23 +76,31 @@ export default function StandaloneEarthMesh3D({
   currentPosition,
   onMeshStatsUpdate 
 }: StandaloneEarthMesh3DProps) {
-  // Zoom limits: allow close viewing while staying OUTSIDE the mesh
+  // Zoom limits: safe distance with telescopic lens for close-up effect
   // CRITICAL: Camera MUST stay outside STEP_RADIUS to avoid "underground" view
   // - STEP_RADIUS = 1.07 (mesh layer)
-  // - MIN_ZOOM = 1.071 (camera ~6km above surface)
-  // - This prevents camera from penetrating through the triangle layer
-  // - Allows viewing of very small triangles up close
+  // - MIN_ZOOM = 1.071 (camera ~6.4km above surface)
+  // - Strategy: Stay at safe distance, use narrow FOV for telescopic effect
+  // - Result: Visual magnification without culling issues
   // 
   // Altitude calculation: (zoom - STEP_RADIUS) * EARTH_RADIUS_KM
-  // - MIN_ZOOM 1.071 → (1.071 - 1.07) * 6371 = ~6.4km altitude
-  const MIN_ZOOM = 1.071;   // ~6km altitude - very close to surface
-  const MAX_ZOOM = 5.0;     // ~25,500 km altitude - entire hemisphere visible
+  // - MIN_ZOOM 1.071 → (1.071 - 1.07) * 6371 ≈ 6.4km altitude
+  const MIN_ZOOM = 1.071;      // ~6.4km altitude - safe distance
+  const MAX_ZOOM = 5.0;        // ~25,500 km altitude - entire hemisphere visible
   
-  // Dynamic telescopic FOV: creates "zoom lens" effect
-  // Close zoom (z=1.08) → FOV=20° (telephoto) to see 7m triangles screen-sized
-  // Far zoom (z=5.0) → FOV=70° (wide angle) to see 7000km triangles screen-sized
-  const MIN_FOV = 20; // Telephoto lens for close zoom
+  // Super telephoto FOV: narrow field of view creates telescopic magnification
+  // What: Narrow FOV at close zoom simulates being much closer
+  // Why: Stay at safe distance (6km) but see same detail as if at 600m
+  // Result: Visual zoom WITHOUT culling problems
+  // 
+  // FOV reference:
+  // - 10° = extreme telephoto (like 800mm lens)
+  // - 20° = telephoto (like 200mm lens)
+  // - 50° = normal (like 50mm lens)
+  // - 70° = wide angle (like 28mm lens)
+  const MIN_FOV = 10; // Super telephoto for extreme magnification at 6km
   const MAX_FOV = 70; // Wide angle lens for far zoom
+  
 
   // Rendering radii (keep consistent everywhere)
   const EARTH_RADIUS = 0.95;
@@ -247,10 +255,16 @@ export default function StandaloneEarthMesh3D({
    * ALSO: Initialize mesh rotation to center GPS position on first load.
    */
   useEffect(() => {
+    console.log(`[GPS Centering] useEffect triggered - currentPosition=${currentPosition ? 'YES' : 'NO'}, meshState.size=${meshState.size}`);
+    
     if (!currentPosition || meshState.size === 0) {
+      console.log('[GPS Centering] Skipping - no position or empty mesh');
       setGpsTriangleId(null);
       return;
     }
+    
+    console.log(`[GPS Centering] GPS Position: ${currentPosition.lat.toFixed(6)}, ${currentPosition.lon.toFixed(6)}`);
+    console.log(`[GPS Centering] hasInitializedRotation: ${hasInitializedRotationRef.current}`);
 
     const activeTriangles = getActiveTriangles(meshState);
     const triangleId = findTriangleContainingPoint(
@@ -269,12 +283,13 @@ export default function StandaloneEarthMesh3D({
     // What: Use proper 3D vector rotation to align GPS point with camera view
     // Why: User should see their location immediately at screen center
     if (!hasInitializedRotationRef.current && currentPosition) {
+      console.log('[GPS Centering] 🎯 INITIALIZING GPS CENTERING...');
       hasInitializedRotationRef.current = true;
       
       const lat = currentPosition.lat;
       const lon = currentPosition.lon;
       
-      console.log(`[GPS Init] GPS: ${lat.toFixed(4)}°, ${lon.toFixed(4)}°`);
+      console.log(`[GPS Centering] Target GPS: ${lat.toFixed(6)}°, ${lon.toFixed(6)}°`);
       
       // Simple Euler angle calculation to center GPS at screen center
       // Camera at (0,0,+zoom) looks along -Z axis toward (0,0,-1)
@@ -298,12 +313,18 @@ export default function StandaloneEarthMesh3D({
       
       rotationRef.current = { x: rotX, y: rotY };
       
-      console.log(`  Rotation: Y=${(rotY * 180 / Math.PI).toFixed(1)}° (lon), X=${(rotX * 180 / Math.PI).toFixed(1)}° (lat)`);
+      console.log(`[GPS Centering] ✅ Calculated rotation:`);
+      console.log(`  rotX = ${rotX.toFixed(4)} rad = ${(rotX * 180 / Math.PI).toFixed(2)}°`);
+      console.log(`  rotY = ${rotY.toFixed(4)} rad = ${(rotY * 180 / Math.PI).toFixed(2)}°`);
+      console.log(`[GPS Centering] Triggering mesh rotation update...`);
       
       // CRITICAL: Trigger visibility recalculation with new rotation
       setTimeout(() => {
+        console.log('[GPS Centering] 🔄 Setting meshRotation state...');
         setMeshRotation({ x: rotX, y: rotY });
       }, 100);
+    } else {
+      console.log(`[GPS Centering] Skipping init - already initialized or no position`);
     }
   }, [currentPosition, meshState]);
 
@@ -642,7 +663,14 @@ export default function StandaloneEarthMesh3D({
             initialZoomRef.current = zoomRef.current;
           } else {
             const scale = distance / initialPinchDistanceRef.current;
-            let newZoom = initialZoomRef.current / scale;
+            
+            // ZOOM SENSITIVITY: Reduce zoom speed for finer control
+            // What: Dampen the scale change by factor of 0.25 (25% speed)
+            // Why: At 100% speed, zooming from 6km → 600km happens too fast
+            //      At 25% speed, gradual zoom steps: 6km → 60km → 120km → 240km...
+            const ZOOM_SENSITIVITY = 0.25;
+            const adjustedScale = 1 + (scale - 1) * ZOOM_SENSITIVITY;
+            let newZoom = initialZoomRef.current / adjustedScale;
             
             // Clamp to min/max zoom limits
             newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, newZoom));
@@ -714,10 +742,25 @@ export default function StandaloneEarthMesh3D({
                 anchorPointRef.current = currentPoint;
               }
             } else {
-              // Raycast failed (finger moved off sphere edge)
-              // Reset anchor - rotation will pause until finger returns to sphere
-              anchorPointRef.current = null;
+              // FALLBACK ROTATION: At narrow FOV, finger easily moves off visible sphere
+              // Solution: Use pixel delta-based rotation when raycast fails
+              // What: Convert pixel movement to angular rotation (traditional rotation)
+              // Why: Keeps rotation working at 10° FOV when sphere is small on screen
+              const ROTATION_SENSITIVITY = 0.005; // radians per pixel
+              rotationRef.current.y -= deltaX * ROTATION_SENSITIVITY;
+              rotationRef.current.x += deltaY * ROTATION_SENSITIVITY;
+              
+              // Clamp X rotation to prevent flipping upside down
+              rotationRef.current.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, rotationRef.current.x));
+              
+              // Don't reset anchor - try to reacquire it on next frame
             }
+          } else {
+            // No anchor point yet - use delta-based rotation as fallback
+            const ROTATION_SENSITIVITY = 0.005;
+            rotationRef.current.y -= deltaX * ROTATION_SENSITIVITY;
+            rotationRef.current.x += deltaY * ROTATION_SENSITIVITY;
+            rotationRef.current.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, rotationRef.current.x));
           }
           
           lastTouchRef.current = { x: lx, y: ly };
@@ -777,7 +820,9 @@ export default function StandaloneEarthMesh3D({
     const scene = new THREE.Scene();
     sceneRef.current = scene;
 
-    const camera = new THREE.PerspectiveCamera(50, gl.drawingBufferWidth / gl.drawingBufferHeight, 0.001, 100);
+    // Near plane 0.0001 allows camera to get VERY close without clipping triangles
+    // Far plane 100 ensures we see Earth from max zoom distance
+    const camera = new THREE.PerspectiveCamera(50, gl.drawingBufferWidth / gl.drawingBufferHeight, 0.0001, 100);
     camera.position.set(0, 0, INITIAL_ZOOM); // Start at 10000km visible width
     camera.lookAt(new THREE.Vector3(0, 0, 0));
     cameraRef.current = camera;
@@ -948,8 +993,13 @@ export default function StandaloneEarthMesh3D({
       actives = actives.filter(tri => tri.level <= maxVisibleLevel);
       console.log(`[Visibility] Progressive mode: showing level 0-${maxVisibleLevel}, filtered to ${actives.length} triangles`);
     } else {
-      console.log(`[Visibility] Testing ${actives.length} active triangles`);
+    console.log(`[Visibility] Testing ${actives.length} active triangles`);
     }
+    
+    // Log culling strategy based on zoom level
+    const FRUSTUM_CULLING_THRESHOLD = 1.5;
+    const useFrustumCulling = currentZoom >= FRUSTUM_CULLING_THRESHOLD;
+    console.log(`[Visibility] Culling strategy: zoom=${currentZoom.toFixed(2)}, frustum=${useFrustumCulling ? 'ENABLED' : 'DISABLED (too close)'}, backface=ENABLED`);
     
     const visibleTriangles: MeshTriangle[] = [];
     let backfaceCulled = 0;
@@ -1001,30 +1051,38 @@ export default function StandaloneEarthMesh3D({
       v1Scaled.applyMatrix4(rotationMatrix);
       v2Scaled.applyMatrix4(rotationMatrix);
       
-      // Bounding sphere test with rotated vertices
-      const centerScaled = new THREE.Vector3(
-        (v0Scaled.x + v1Scaled.x + v2Scaled.x) / 3,
-        (v0Scaled.y + v1Scaled.y + v2Scaled.y) / 3,
-        (v0Scaled.z + v1Scaled.z + v2Scaled.z) / 3
-      );
-      const r0 = centerScaled.distanceTo(v0Scaled);
-      const r1 = centerScaled.distanceTo(v1Scaled);
-      const r2 = centerScaled.distanceTo(v2Scaled);
-      const radius = Math.max(r0, r1, r2);
-      const sphere = new THREE.Sphere(centerScaled, radius);
+      // SMART CULLING: At close zoom, frustum math breaks down
+      // Solution: Only use frustum culling when camera is reasonably far
+      // What: Skip frustum test if zoom < 1.5 (camera within ~2500km of surface)
+      // Why: At MIN_ZOOM=1.071, camera is 0.001 units from triangles - frustum culling fails
+      //      Backface culling alone is sufficient and accurate at close range
       
-      // Debug GPS triangle
-      if (debugGPS && tri.id === gpsTriangleId) {
-        console.log(`[GPS Debug] Frustum test: center=(${centerScaled.x.toFixed(2)}, ${centerScaled.y.toFixed(2)}, ${centerScaled.z.toFixed(2)}), radius=${radius.toFixed(3)}`);
-      }
-      
-      if (!frustum.intersectsSphere(sphere)) {
-        frustumCulled++;
+      if (useFrustumCulling) {
+        // Far zoom: use both frustum and backface culling
+        const centerScaled = new THREE.Vector3(
+          (v0Scaled.x + v1Scaled.x + v2Scaled.x) / 3,
+          (v0Scaled.y + v1Scaled.y + v2Scaled.y) / 3,
+          (v0Scaled.z + v1Scaled.z + v2Scaled.z) / 3
+        );
+        const r0 = centerScaled.distanceTo(v0Scaled);
+        const r1 = centerScaled.distanceTo(v1Scaled);
+        const r2 = centerScaled.distanceTo(v2Scaled);
+        const radius = Math.max(r0, r1, r2);
+        const sphere = new THREE.Sphere(centerScaled, radius);
+        
         if (debugGPS && tri.id === gpsTriangleId) {
-          console.log(`[GPS Debug] ❌ FRUSTUM CULLED`);
+          console.log(`[GPS Debug] Frustum test: center=(${centerScaled.x.toFixed(2)}, ${centerScaled.y.toFixed(2)}, ${centerScaled.z.toFixed(2)}), radius=${radius.toFixed(3)}`);
         }
-        continue; // Not in view, skip
+        
+        if (!frustum.intersectsSphere(sphere)) {
+          frustumCulled++;
+          if (debugGPS && tri.id === gpsTriangleId) {
+            console.log(`[GPS Debug] ❌ FRUSTUM CULLED`);
+          }
+          continue; // Not in view, skip
+        }
       }
+      // else: Close zoom - skip frustum test, rely on backface culling only
       
       if (debugGPS && tri.id === gpsTriangleId) {
         console.log(`[GPS Debug] ✅ VISIBLE`);
@@ -1036,7 +1094,7 @@ export default function StandaloneEarthMesh3D({
     console.log(`[Visibility] 📊 Results:`);
     console.log(`  Total Active: ${actives.length}`);
     console.log(`  Backface Culled: ${backfaceCulled}`);
-    console.log(`  Frustum Culled: ${frustumCulled}`);
+    console.log(`  Frustum Culled: ${frustumCulled} ${useFrustumCulling ? '' : '(DISABLED at this zoom)'}`);
     console.log(`  VISIBLE: ${visibleTriangles.length}`);
     
     // Update visible triangle count for stats
