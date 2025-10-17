@@ -75,7 +75,7 @@ export interface UseSphericalTrianglesOptions {
   // Triangle level (1-21, default 10)
   level?: number;
   
-  // Maximum neighbors to fetch (default 512, max 512)
+  // Maximum neighbors to fetch (default 256, max 256)
   maxNeighbors?: number;
   
   // Throttle time for location updates (ms, default 500)
@@ -90,7 +90,7 @@ export interface UseSphericalTrianglesOptions {
 // ========================================
 
 const DEFAULT_LEVEL = 10; // City-level precision (~15.6 km triangles)
-const MAX_NEIGHBORS = 512; // Performance limit (matches web)
+const MAX_NEIGHBORS = 256; // Hard performance limit: maximum neighbor triangles (reduced from 512 for responsiveness)
 const DEFAULT_THROTTLE_MS = 500; // 2 Hz update rate
 const BBOX_MARGIN_KM = 10; // Bounding box size for neighbor search
 
@@ -109,14 +109,14 @@ const BBOX_MARGIN_KM = 10; // Bounding box size for neighbor search
  * const { currentTriangle, neighbors, isLoading, error } = useSphericalTriangles({
  *   position: { lat: 37.7749, lon: -122.4194 },
  *   level: 10,
- *   maxNeighbors: 512,
+ *   maxNeighbors: 256,
  * });
  * ```
  * 
  * Features:
  * - Automatic refetch on position/level change (throttled)
  * - Converts API GeoJSON to 3D Vector3 positions
- * - Enforces 512 triangle limit
+ * - Enforces 256 triangle limit for performance (reduced from 512)
  * - Memoized computations for performance
  * 
  * @param options - Hook configuration

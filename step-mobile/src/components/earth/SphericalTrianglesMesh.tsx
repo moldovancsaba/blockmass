@@ -16,7 +16,7 @@
  * - Backface culling (GPU side, automatic)
  * 
  * Performance:
- * - Handles up to 512 triangles at 30-60 fps
+ * - Handles up to 256 triangles at 30-60 fps (reduced from 512 for responsiveness)
  * - Geometry only rebuilt when triangle list changes
  * - Uses Float32Array for vertex data (memory efficient)
  * 
@@ -251,7 +251,7 @@ function CurrentTriangleMesh({
  * - Geometries only rebuilt when triangle lists change
  * - Each geometry = single draw call (GPU efficient)
  * - Backface culling automatic (GPU side)
- * - Memory footprint: ~20 KB for 512 triangles
+ * - Memory footprint: ~10 KB for 256 triangles (reduced from ~20 KB for 512)
  * 
  * @param props - Neighbors, current triangle, camera position
  * @returns React component rendering spherical triangles

@@ -25,7 +25,7 @@ const USE_LOCAL_DEV = true;
 const PRODUCTION_API_URL = 'https://step-blockchain-api.onrender.com';
 const isWeb = Platform.OS === 'web';
 const API_BASE_URL = USE_LOCAL_DEV && __DEV__
-  ? (isWeb ? 'http://localhost:5500' : 'http://192.168.100.138:5500')
+  ? (isWeb ? 'http://localhost:5500' : 'http://192.168.100.144:5500')
   : PRODUCTION_API_URL;
 
 interface UseActiveTrianglesResult {
@@ -39,14 +39,14 @@ interface UseActiveTrianglesResult {
  * Hook to fetch active spherical triangles at a given level with click counts.
  * 
  * @param level - Subdivision level (1-21), typically 10 for mining
- * @param maxResults - Maximum triangles to fetch (default 512)
+ * @param maxResults - Maximum triangles to fetch (default 256, reduced from 512 for performance)
  * @param includePolygon - Whether to fetch full polygon geometry (default true for 3D rendering)
  * @param autoRefresh - Auto-refresh interval in milliseconds (0 = disabled)
  * @returns Active triangles with loading/error state and refetch function
  */
 export function useActiveTriangles(
   level: number,
-  maxResults: number = 512,
+  maxResults: number = 256, // Hard performance limit: maximum visible triangles (reduced from 512)
   includePolygon: boolean = true,
   autoRefresh: number = 0 // 0 = no auto-refresh, 30000 = refresh every 30s
 ): UseActiveTrianglesResult {
@@ -65,6 +65,7 @@ export function useActiveTriangles(
    * - Calls new /mesh/active endpoint that queries MongoDB for triangles with clicks > 0
    * - Returns only mined triangles (not all 20,480 at level 10) for efficient rendering
    * - Includes polygon geometry for 3D mesh rendering on sphere
+   * - Limited to 256 triangles for performance (reduced from 512)
    */
   const fetchActiveTriangles = useCallback(async () => {
     try {

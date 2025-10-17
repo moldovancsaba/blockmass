@@ -11,7 +11,7 @@
 import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import MapScreen from './src/screens/MapScreen';
+import StandaloneMapScreen from './src/screens/StandaloneMapScreen';
 import BalanceScreen from './src/screens/BalanceScreen';
 
 const Tab = createBottomTabNavigator();
@@ -39,7 +39,7 @@ export default function App() {
       >
         <Tab.Screen
           name="Map"
-          component={MapScreen}
+          component={StandaloneMapScreen}
           options={{
             tabBarIcon: () => null,
             tabBarLabel: '⛏️ Mine',
