@@ -41,21 +41,31 @@ export default function StandaloneMapScreen() {
   const initializeApp = async () => {
     try {
       setLoading(true);
+      console.log('[StandaloneMapScreen] 🚀 Initializing app...');
 
       // Check/request location permission
+      console.log('[StandaloneMapScreen] Checking location permission...');
       let permission = await LocationService.checkLocationPermission();
+      console.log(`[StandaloneMapScreen] Initial permission: granted=${permission.granted}, status=${permission.status}`);
+      
       if (!permission.granted) {
+        console.log('[StandaloneMapScreen] Requesting location permission...');
         permission = await LocationService.requestLocationPermission();
+        console.log(`[StandaloneMapScreen] After request: granted=${permission.granted}, status=${permission.status}`);
       }
 
       // Get current location (silent fail if no permission)
       if (permission.granted) {
+        console.log('[StandaloneMapScreen] Permission granted, fetching GPS location...');
         await updateLocation();
+      } else {
+        console.warn('[StandaloneMapScreen] ⚠️ Location permission denied - GPS centering disabled');
       }
 
       setLoading(false);
+      console.log('[StandaloneMapScreen] ✓ Initialization complete');
     } catch (error) {
-      console.error('Error initializing app:', error);
+      console.error('[StandaloneMapScreen] ❌ Error initializing app:', error);
       setLoading(false);
     }
   };
@@ -152,6 +162,19 @@ export default function StandaloneMapScreen() {
         </View>
       )}
 
+      {/* GPS Status Indicator */}
+      <View style={styles.gpsStatusOverlay}>
+        {currentLocation ? (
+          <Text style={styles.gpsStatusText}>
+            📍 GPS: {currentLocation.latitude.toFixed(4)}, {currentLocation.longitude.toFixed(4)}
+          </Text>
+        ) : (
+          <Text style={styles.gpsStatusTextWarning}>
+            ⚠️ GPS not acquired - Grant location permission
+          </Text>
+        )}
+      </View>
+      
       {/* Instructions Overlay */}
       <View style={styles.instructionsOverlay}>
         <Text style={styles.instructionsText}>
@@ -215,6 +238,26 @@ const styles = StyleSheet.create({
   },
   statsSpacing: {
     marginTop: 12,
+  },
+  gpsStatusOverlay: {
+    position: 'absolute',
+    top: 110,
+    left: 20,
+    right: 20,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    padding: 10,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  gpsStatusText: {
+    fontSize: 12,
+    color: '#00FF00',
+    fontFamily: 'monospace',
+  },
+  gpsStatusTextWarning: {
+    fontSize: 12,
+    color: '#FFFF00',
+    fontFamily: 'monospace',
   },
   instructionsOverlay: {
     position: 'absolute',
