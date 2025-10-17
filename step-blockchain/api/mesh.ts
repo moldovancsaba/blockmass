@@ -697,4 +697,212 @@ router.get('/active', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * GET /mesh/state
+ * 
+ * Get the complete global mesh state for standalone mobile app.
+ * Returns all active (non-subdivided) triangles with clicks and colors.
+ * 
+ * Why this exists:
+ * - Mobile app needs to render the full icosahedron with current mining state
+ * - All users see the same global state (not per-user)
+ * - Includes colors and clicks for visualization
+ * 
+ * Response:
+ * {
+ *   "ok": true,
+ *   "result": {
+ *     "version": "1.0.0",
+ *     "lastUpdated": "2025-10-15T11:10:04.123Z",
+ *     "triangleCount": 20,
+ *     "triangles": {
+ *       "ICO-0": {
+ *         "id": "ICO-0",
+ *         "vertices": [[...], [...], [...]],
+ *         "baseColor": "#E6194B",
+ *         "clicks": 3,
+ *         "subdivided": false,
+ *         "children": [],
+ *         "parent": null,
+ *         "level": 0
+ *       },
+ *       ...
+ *     }
+ *   }
+ * }
+ */
+router.get('/state', async (req: Request, res: Response) => {
+  try {
+    // Import the global mesh model
+    const { GlobalMeshTriangleModel } = await import('../core/state/global-mesh-schema.js');
+    
+    // Fetch all triangles from database
+    const triangles = await GlobalMeshTriangleModel.find({}).lean().exec();
+    
+    // If no triangles exist, initialize with base 20
+    if (triangles.length === 0) {
+      return res.status(503).json(
+        errorResponse('NOT_INITIALIZED', 'Global mesh not initialized. Server needs to seed base triangles.')
+      );
+    }
+    
+    // Convert to frontend format
+    const trianglesMap: Record<string, any> = {};
+    let lastUpdated: Date | null = null;
+    
+    for (const tri of triangles) {
+      trianglesMap[tri.triangleId] = {
+        id: tri.triangleId,
+        vertices: tri.vertices,
+        baseColor: tri.baseColor,
+        clicks: tri.clicks,
+        subdivided: tri.subdivided,
+        children: tri.children,
+        parent: tri.parent,
+        level: tri.level,
+      };
+      
+      // Track most recent update
+      if (tri.lastMined && (!lastUpdated || tri.lastMined > lastUpdated)) {
+        lastUpdated = tri.lastMined;
+      }
+    }
+    
+    res.json(
+      successResponse({
+        version: '1.0.0',
+        lastUpdated: lastUpdated ? lastUpdated.toISOString() : new Date().toISOString(),
+        triangleCount: triangles.length,
+        triangles: trianglesMap,
+      })
+    );
+  } catch (error: any) {
+    res.status(500).json(
+      errorResponse('INTERNAL_ERROR', error.message || 'Failed to fetch mesh state')
+    );
+  }
+});
+
+/**
+ * POST /mesh/mine
+ * 
+ * Increment clicks on a triangle (simulated mining).
+ * At 10 clicks, automatically subdivides into 4 children.
+ * 
+ * Request body:
+ * {
+ *   "triangleId": "ICO-3",
+ *   "clicks": 1  // Optional, defaults to 1
+ * }
+ * 
+ * Response:
+ * {
+ *   "ok": true,
+ *   "result": {
+ *     "triangleId": "ICO-3",
+ *     "clicks": 4,
+ *     "subdivided": false,
+ *     "message": "Mining successful"
+ *   }
+ * }
+ * 
+ * Or if subdivided:
+ * {
+ *   "ok": true,
+ *   "result": {
+ *     "triangleId": "ICO-3",
+ *     "clicks": 10,
+ *     "subdivided": true,
+ *     "children": ["ICO-3-0", "ICO-3-1", "ICO-3-2", "ICO-3-3"],
+ *     "message": "Triangle subdivided into 4 children"
+ *   }
+ * }
+ */
+router.post('/mine', async (req: Request, res: Response) => {
+  try {
+    const { triangleId, clicks: clicksToAdd = 1 } = req.body;
+    
+    // Validate input
+    if (!triangleId) {
+      return res.status(400).json(
+        errorResponse('MISSING_PARAMS', 'Required: triangleId')
+      );
+    }
+    
+    if (typeof clicksToAdd !== 'number' || clicksToAdd < 1 || clicksToAdd > 10) {
+      return res.status(400).json(
+        errorResponse('INVALID_PARAMS', 'clicks must be 1-10')
+      );
+    }
+    
+    // Import dependencies
+    const { GlobalMeshTriangleModel } = await import('../core/state/global-mesh-schema.js');
+    
+    // Find triangle in database
+    const triangle = await GlobalMeshTriangleModel.findOne({ triangleId });
+    
+    if (!triangle) {
+      return res.status(404).json(
+        errorResponse('NOT_FOUND', `Triangle not found: ${triangleId}`)
+      );
+    }
+    
+    // Check if already subdivided
+    if (triangle.subdivided) {
+      return res.status(400).json(
+        errorResponse('ALREADY_SUBDIVIDED', 'Cannot mine a subdivided triangle')
+      );
+    }
+    
+    // Increment clicks (atomic operation for thread safety)
+    triangle.clicks += clicksToAdd;
+    triangle.lastMined = new Date();
+    
+    // Check if subdivision needed
+    if (triangle.clicks >= 10) {
+      triangle.clicks = 10;
+      triangle.subdivided = true;
+      
+      // Generate 4 child triangles
+      // Import subdivision function
+      const { subdivideTriangleMesh } = await import('../core/mesh/subdivision.js');
+      const children = await subdivideTriangleMesh(triangle);
+      
+      // Save children to database
+      for (const child of children) {
+        await GlobalMeshTriangleModel.create(child);
+      }
+      
+      triangle.children = children.map((c: any) => c.triangleId);
+      await triangle.save();
+      
+      return res.json(
+        successResponse({
+          triangleId: triangle.triangleId,
+          clicks: triangle.clicks,
+          subdivided: true,
+          children: triangle.children,
+          message: 'Triangle subdivided into 4 children',
+        })
+      );
+    }
+    
+    // Save updated triangle
+    await triangle.save();
+    
+    res.json(
+      successResponse({
+        triangleId: triangle.triangleId,
+        clicks: triangle.clicks,
+        subdivided: false,
+        message: 'Mining successful',
+      })
+    );
+  } catch (error: any) {
+    res.status(500).json(
+      errorResponse('INTERNAL_ERROR', error.message || 'Mining failed')
+    );
+  }
+});
+
 export default router;

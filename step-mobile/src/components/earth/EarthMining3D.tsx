@@ -117,7 +117,7 @@ export default function EarthMining3D({
   } = useSphericalTriangles({
     position: currentPosition || null,
     level: triangleLevel,
-    maxNeighbors: 512,
+    maxNeighbors: 256, // Hard performance limit: maximum neighbor triangles (reduced from 512)
     enabled: !!currentPosition,
   });
 

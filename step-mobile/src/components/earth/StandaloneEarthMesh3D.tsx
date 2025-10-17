@@ -139,17 +139,11 @@ export default function StandaloneEarthMesh3D({
   // Interaction state
   const rotationRef = useRef({ x: 0, y: 0 });
   
-  // Calculate initial zoom for 10000km visible width
-  // What: Compute camera distance needed to show desired ground width
-  // Why: User wants to see 10000km at launch
-  // 
-  // Formula: visibleWidth = 2 * distance * tan(horizontalFOV / 2)
-  // Solving for zoom: zoom = visibleWidth / (2 * tan(horizontalFOV / 2)) / EARTH_RADIUS_KM
-  // 
-  // At far zoom, FOV = MAX_FOV = 70°, aspect ratio ~1.5 (phone screen)
-  // horizontalFOV ≈ 2 * atan(tan(35°) * 1.5) ≈ 85°
-  // For 10000km: zoom ≈ 10000 / (2 * tan(42.5°) * 6371) ≈ 3.5
-  const INITIAL_ZOOM = 3.5; // Shows ~10000km wide at launch
+  // Start at MINIMUM zoom (closest to surface)
+  // What: Begin at lowest altitude showing smallest area
+  // Why: Mining app should focus on immediate GPS location, not global view
+  // User can zoom OUT to see more context
+  const INITIAL_ZOOM = MIN_ZOOM; // Start at minimum altitude (~7km above surface)
   const zoomRef = useRef(INITIAL_ZOOM);
   const hasInitializedRotationRef = useRef<boolean>(false); // Track if we've set initial GPS rotation
   
@@ -288,8 +282,9 @@ export default function StandaloneEarthMesh3D({
       
       // Calculate rotation needed to align GPS vector with target (camera direction)
       // Method: Use quaternion.setFromUnitVectors(from, to)
-      // This finds the rotation that takes GPS point → screen center
-      const quaternion = new THREE.Quaternion().setFromUnitVectors(gpsVector, targetVector);
+      // CRITICAL: Rotate FROM target TO gpsVector (inverse rotation)
+      // Why: We're rotating the MESH, not the camera, so logic is inverted
+      const quaternion = new THREE.Quaternion().setFromUnitVectors(targetVector, gpsVector);
       
       // Convert quaternion to Euler angles (X, Y rotations)
       const euler = new THREE.Euler().setFromQuaternion(quaternion, 'YXZ');
@@ -1140,14 +1135,8 @@ export default function StandaloneEarthMesh3D({
     }
 
     // Update GPS marker (always visible, positioned at current GPS location)
-    if (currentPosition) {
-      if (gpsMarkerRef.current) {
-        sceneRef.current.remove(gpsMarkerRef.current);
-        gpsMarkerRef.current.geometry.dispose();
-        (gpsMarkerRef.current.material as THREE.Material).dispose();
-        gpsMarkerRef.current = null;
-      }
-      
+    // CRITICAL: Only create marker if it doesn't exist yet to avoid infinite loop
+    if (currentPosition && !gpsMarkerRef.current) {
       const gpsPoint = sphericalToCartesian(currentPosition.lat, currentPosition.lon);
       const GPS_MARKER_RADIUS = 1.12; // Above GPS edges
       const markerGeometry = new THREE.SphereGeometry(0.02, 16, 16); // Small sphere
@@ -1173,7 +1162,7 @@ export default function StandaloneEarthMesh3D({
     
     const elapsed = Date.now() - startTime;
     console.log(`[Visibility] ⏱️ Render complete in ${elapsed}ms\n`);
-  }, [meshState, gpsTriangleId, renderTrigger, meshRotation, maxVisibleLevel, currentPosition]); // Rebuild on state changes, rotation, progressive level, AND GPS position
+  }, [meshState, gpsTriangleId, renderTrigger, meshRotation, maxVisibleLevel]); // Rebuild on state changes, rotation, progressive level (GPS marker uses currentPosition but doesn't need to trigger full rebuild)
 
 
   /**
