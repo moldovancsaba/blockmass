@@ -79,10 +79,13 @@ export default function StandaloneEarthMesh3D({
   // Zoom limits: allow close viewing while staying OUTSIDE the mesh
   // CRITICAL: Camera MUST stay outside STEP_RADIUS to avoid "underground" view
   // - STEP_RADIUS = 1.07 (mesh layer)
-  // - MIN_ZOOM = 1.08 (camera stays 0.01 units above mesh)
+  // - MIN_ZOOM = 1.071 (camera ~6km above surface)
   // - This prevents camera from penetrating through the triangle layer
-  // - Allows viewing of small triangles (level 15+) without going "inside"
-  const MIN_ZOOM = 1.08;    // Just above STEP_RADIUS - prevents "underground" bug
+  // - Allows viewing of very small triangles up close
+  // 
+  // Altitude calculation: (zoom - STEP_RADIUS) * EARTH_RADIUS_KM
+  // - MIN_ZOOM 1.071 → (1.071 - 1.07) * 6371 = ~6.4km altitude
+  const MIN_ZOOM = 1.071;   // ~6km altitude - very close to surface
   const MAX_ZOOM = 5.0;     // ~25,500 km altitude - entire hemisphere visible
   
   // Dynamic telescopic FOV: creates "zoom lens" effect
