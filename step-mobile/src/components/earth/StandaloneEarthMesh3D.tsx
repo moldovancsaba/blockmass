@@ -746,7 +746,8 @@ export default function StandaloneEarthMesh3D({
               // Solution: Use pixel delta-based rotation when raycast fails
               // What: Convert pixel movement to angular rotation (traditional rotation)
               // Why: Keeps rotation working at 10° FOV when sphere is small on screen
-              const ROTATION_SENSITIVITY = 0.005; // radians per pixel
+              // Increased sensitivity for better control at close zoom
+              const ROTATION_SENSITIVITY = 0.01; // radians per pixel (2x more sensitive)
               rotationRef.current.y -= deltaX * ROTATION_SENSITIVITY;
               rotationRef.current.x += deltaY * ROTATION_SENSITIVITY;
               
@@ -757,7 +758,7 @@ export default function StandaloneEarthMesh3D({
             }
           } else {
             // No anchor point yet - use delta-based rotation as fallback
-            const ROTATION_SENSITIVITY = 0.005;
+            const ROTATION_SENSITIVITY = 0.01; // 2x more sensitive
             rotationRef.current.y -= deltaX * ROTATION_SENSITIVITY;
             rotationRef.current.x += deltaY * ROTATION_SENSITIVITY;
             rotationRef.current.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, rotationRef.current.x));
@@ -997,7 +998,8 @@ export default function StandaloneEarthMesh3D({
     }
     
     // Log culling strategy based on zoom level
-    const FRUSTUM_CULLING_THRESHOLD = 1.5;
+    // Raise threshold to 2.0 to prevent hidden triangles at medium zoom
+    const FRUSTUM_CULLING_THRESHOLD = 2.0;
     const useFrustumCulling = currentZoom >= FRUSTUM_CULLING_THRESHOLD;
     console.log(`[Visibility] Culling strategy: zoom=${currentZoom.toFixed(2)}, frustum=${useFrustumCulling ? 'ENABLED' : 'DISABLED (too close)'}, backface=ENABLED`);
     
@@ -1053,8 +1055,8 @@ export default function StandaloneEarthMesh3D({
       
       // SMART CULLING: At close zoom, frustum math breaks down
       // Solution: Only use frustum culling when camera is reasonably far
-      // What: Skip frustum test if zoom < 1.5 (camera within ~2500km of surface)
-      // Why: At MIN_ZOOM=1.071, camera is 0.001 units from triangles - frustum culling fails
+      // What: Skip frustum test if zoom < 2.0 (camera within ~5900km of surface)
+      // Why: At close zoom, frustum culling causes incorrect rejections
       //      Backface culling alone is sufficient and accurate at close range
       
       if (useFrustumCulling) {

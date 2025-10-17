@@ -1,8 +1,8 @@
 # Blockmass
 
 <!--VERSION_BADGE_START-->
-![Version](https://img.shields.io/badge/version-v0.21.57-blue)
-Last synced: 2025-10-08T08:27:30.366Z
+![Version](https://img.shields.io/badge/version-v0.21.58-blue)
+Last synced: 2025-10-17T16:25:54.365Z
 <!--VERSION_BADGE_END-->
 
 Minimal, rule-compliant foundation:
