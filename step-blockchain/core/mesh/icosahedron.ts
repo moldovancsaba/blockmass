@@ -245,3 +245,88 @@ export function subdivideTriangle(
     [m01, m12, m20], // Center child
   ];
 }
+
+/**
+ * Cross product of two 3D vectors.
+ * 
+ * Result is perpendicular to both input vectors (right-hand rule).
+ * Used to compute plane normals for spherical geometry.
+ * 
+ * @param v1 - First vector
+ * @param v2 - Second vector
+ * @returns Cross product vector
+ */
+export function cross(v1: Vector3, v2: Vector3): Vector3 {
+  return {
+    x: v1.y * v2.z - v1.z * v2.y,
+    y: v1.z * v2.x - v1.x * v2.z,
+    z: v1.x * v2.y - v1.y * v2.x,
+  };
+}
+
+/**
+ * Dot product of two 3D vectors.
+ * 
+ * Measures projection of one vector onto another.
+ * Used for angle computations and point-plane tests.
+ * 
+ * @param v1 - First vector
+ * @param v2 - Second vector
+ * @returns Dot product (scalar)
+ */
+export function dot(v1: Vector3, v2: Vector3): number {
+  return v1.x * v2.x + v1.y * v2.y + v1.z * v2.z;
+}
+
+/**
+ * Test if a point is inside a spherical triangle using proper spherical geometry.
+ * 
+ * Algorithm: Point is inside if it's on the same side of all 3 great circle edges.
+ * 
+ * For each edge (v1, v2):
+ * 1. Compute plane normal: cross(v1, v2)
+ * 2. Check which side the point is on: sign(dot(normal, point))
+ * 3. Check which side the opposite vertex is on: sign(dot(normal, opposite))
+ * 4. If signs match for all 3 edges, point is inside
+ * 
+ * This is accurate for any triangle size on a sphere, unlike planar approximations.
+ * 
+ * @param point - Test point (Cartesian, on unit sphere)
+ * @param v0 - Triangle vertex 0 (Cartesian)
+ * @param v1 - Triangle vertex 1 (Cartesian)
+ * @param v2 - Triangle vertex 2 (Cartesian)
+ * @returns True if point is inside triangle
+ */
+export function isPointInSphericalTriangle(
+  point: Vector3,
+  v0: Vector3,
+  v1: Vector3,
+  v2: Vector3
+): boolean {
+  // For each edge, check if point and opposite vertex are on same side of plane
+  
+  // Edge v0-v1, opposite vertex v2
+  const normal01 = cross(v0, v1);
+  const sign01Point = dot(normal01, point);
+  const sign01Opposite = dot(normal01, v2);
+  
+  // Edge v1-v2, opposite vertex v0
+  const normal12 = cross(v1, v2);
+  const sign12Point = dot(normal12, point);
+  const sign12Opposite = dot(normal12, v0);
+  
+  // Edge v2-v0, opposite vertex v1
+  const normal20 = cross(v2, v0);
+  const sign20Point = dot(normal20, point);
+  const sign20Opposite = dot(normal20, v1);
+  
+  // Point is inside if signs match for all 3 edges
+  // Use a small epsilon for numerical tolerance
+  const epsilon = 1e-10;
+  
+  const inside01 = (sign01Point * sign01Opposite) >= -epsilon;
+  const inside12 = (sign12Point * sign12Opposite) >= -epsilon;
+  const inside20 = (sign20Point * sign20Opposite) >= -epsilon;
+  
+  return inside01 && inside12 && inside20;
+}
