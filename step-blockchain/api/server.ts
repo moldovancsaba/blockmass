@@ -129,14 +129,41 @@ app.get('/', (req, res) => {
 });
 
 /**
- * Mount mesh API router
+ * DB readiness state
+ * Shared between initialization and middleware
  */
-app.use('/mesh', meshRouter);
+const STARTUP_DB_WAIT_MS = parseInt(process.env.STARTUP_DB_WAIT_MS || '15000', 10);
+let dbReady = false;
+let lastDbError: string | null = null;
 
 /**
- * Mount proof validation API router
+ * Middleware: Guard DB-dependent routes
  */
-app.use('/proof', proofRouter);
+function requireDbReady(req: express.Request, res: express.Response, next: express.NextFunction) {
+  if (!dbReady) {
+    return res.status(503).json({
+      ok: false,
+      error: {
+        code: 'SERVICE_UNAVAILABLE',
+        message: 'Database not ready',
+        hint: 'Retry shortly; backend is initializing DB connection',
+        details: lastDbError || undefined,
+      },
+      timestamp: new Date().toISOString(),
+    });
+  }
+  return next();
+}
+
+/**
+ * Mount mesh API router (with DB readiness guard)
+ */
+app.use('/mesh', requireDbReady, meshRouter);
+
+/**
+ * Mount proof validation API router (with DB readiness guard)
+ */
+app.use('/proof', requireDbReady, proofRouter);
 
 /**
  * 404 handler
@@ -169,18 +196,12 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 });
 
 /**
- * Start server (non-blocking)
+ * Initialize DB in background (non-blocking)
  * 
  * Why non-blocking: Start HTTP server immediately, initialize DB in background
  * Why guard timeout: Prevent indefinite waits if MongoDB is unreachable
  * Why mesh route gating: Provide 503 errors instead of crashes when DB isn't ready
  */
-
-const STARTUP_DB_WAIT_MS = parseInt(process.env.STARTUP_DB_WAIT_MS || '15000', 10);
-let dbReady = false;
-let lastDbError: string | null = null;
-
-// Initialize DB in background (non-blocking)
 (async () => {
   const now = new Date().toISOString();
   console.log(`[${now}] [api] Starting DB init with ${STARTUP_DB_WAIT_MS}ms guard timeout...`);
@@ -208,28 +229,9 @@ let lastDbError: string | null = null;
   }
 })();
 
-// Middleware: Guard DB-dependent routes
-function requireDbReady(req: express.Request, res: express.Response, next: express.NextFunction) {
-  if (!dbReady) {
-    return res.status(503).json({
-      ok: false,
-      error: {
-        code: 'SERVICE_UNAVAILABLE',
-        message: 'Database not ready',
-        hint: 'Retry shortly; backend is initializing DB connection',
-        details: lastDbError || undefined,
-      },
-      timestamp: new Date().toISOString(),
-    });
-  }
-  return next();
-}
-
-// Apply DB readiness guard to mesh and proof routes
-app.use('/mesh', requireDbReady);
-app.use('/proof', requireDbReady);
-
-// Start HTTP server immediately (non-blocking)
+/**
+ * Start HTTP server immediately (non-blocking)
+ */
 const server = app.listen(PORT, () => {
   const now = new Date().toISOString();
   console.log(`

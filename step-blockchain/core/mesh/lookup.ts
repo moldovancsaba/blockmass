@@ -21,6 +21,7 @@
 import * as turf from '@turf/turf';
 import { TriangleId, createLevel1Id, getChildrenIds } from './addressing.js';
 import { triangleIdToPolygon, GeoJSONPolygon } from './polygon.js';
+import { sphericalToCartesian, isPointInSphericalTriangle, Vector3 } from './icosahedron.js';
 
 /**
  * Find the triangle at a given level that contains a GPS point.
@@ -82,25 +83,30 @@ export function pointToTriangle(
   // Subdivide down to target level
   for (let currentLevel = 1; currentLevel < level; currentLevel++) {
     const children = getChildrenIds(currentId);
-    let foundChild = false;
-
-    // Test each of 4 children
+    
+    // Find all children that contain the point (may be multiple due to edge cases)
+    const candidateChildren: TriangleId[] = [];
+    
     for (const childId of children) {
       const childPolygon = triangleIdToPolygon(childId);
-
+      
       if (pointInTriangle(point, childPolygon)) {
-        currentId = childId;
-        foundChild = true;
-        break;
+        candidateChildren.push(childId);
       }
     }
 
-    // Failsafe: if point not in any child (numerical error), return parent
-    if (!foundChild) {
-      console.warn(
-        `Point (${lat}, ${lon}) not found in children of ${JSON.stringify(currentId)}. Returning parent.`
-      );
-      return currentId;
+    // If exactly one child contains point, use it
+    if (candidateChildren.length === 1) {
+      currentId = candidateChildren[0];
+    }
+    // If multiple children contain point (on edge/vertex), pick closest by centroid
+    else if (candidateChildren.length > 1) {
+      currentId = findClosestTriangle(point, candidateChildren);
+    }
+    // If no child contains point (numerical precision gap), pick closest by centroid
+    else {
+      // Fallback: find the child with centroid closest to the point
+      currentId = findClosestTriangle(point, children);
     }
   }
 
@@ -108,27 +114,66 @@ export function pointToTriangle(
 }
 
 /**
- * Test if a point is inside a triangle polygon.
+ * Find the triangle with centroid closest to a given point.
  * 
- * Uses Turf.js booleanPointInPolygon for robustness.
- * Handles edge cases:
- * - Points exactly on triangle edges
- * - Points at triangle vertices
- * - Antimeridian crossings
+ * Used when multiple children contain a point (edge case) or
+ * when no child contains the point (precision gap).
+ * 
+ * @param point - GeoJSON Point to test
+ * @param triangles - Array of candidate triangle IDs
+ * @returns Triangle ID with closest centroid
+ */
+function findClosestTriangle(
+  point: turf.helpers.Feature<turf.helpers.Point>,
+  triangles: TriangleId[]
+): TriangleId {
+  let closestId = triangles[0];
+  let minDistance = Infinity;
+
+  for (const triangleId of triangles) {
+    const dist = distanceToTriangle(point, triangleId);
+    if (dist < minDistance) {
+      minDistance = dist;
+      closestId = triangleId;
+    }
+  }
+
+  return closestId;
+}
+
+/**
+ * Test if a point is inside a triangle polygon using proper spherical geometry.
+ * 
+ * This replaces Turf.js planar approximation with true spherical math.
+ * Benefits:
+ * - Accurate for any triangle size on sphere (including large level-1 triangles)
+ * - No antimeridian issues
+ * - Consistent results near poles
+ * - Faster (no external library overhead)
  * 
  * @param point - GeoJSON Point [lon, lat]
- * @param polygon - GeoJSON Polygon
+ * @param polygon - GeoJSON Polygon (triangle with 3 vertices)
  * @returns True if point is inside or on boundary
  */
 function pointInTriangle(
   point: turf.helpers.Feature<turf.helpers.Point>,
   polygon: GeoJSONPolygon
 ): boolean {
-  // Convert our GeoJSON to Turf polygon
-  const turfPolygon = turf.polygon(polygon.coordinates);
-
-  // Turf's booleanPointInPolygon handles edge cases well
-  return turf.booleanPointInPolygon(point, turfPolygon);
+  // Extract lat/lon from GeoJSON Point
+  const [lon, lat] = point.geometry.coordinates;
+  
+  // Convert point to Cartesian (unit sphere)
+  const pointCartesian = sphericalToCartesian(lat, lon);
+  
+  // Convert triangle vertices to Cartesian
+  // Polygon format: [[[lon0, lat0], [lon1, lat1], [lon2, lat2], [lon0, lat0]]]
+  const coords = polygon.coordinates[0];
+  const v0 = sphericalToCartesian(coords[0][1], coords[0][0]);
+  const v1 = sphericalToCartesian(coords[1][1], coords[1][0]);
+  const v2 = sphericalToCartesian(coords[2][1], coords[2][0]);
+  
+  // Use spherical geometry test
+  return isPointInSphericalTriangle(pointCartesian, v0, v1, v2);
 }
 
 /**
