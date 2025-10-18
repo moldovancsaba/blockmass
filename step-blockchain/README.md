@@ -401,16 +401,47 @@ See `.env.example` for all configuration options.
 
 ## 🚢 Deployment
 
+### Render.com Deployment (Recommended)
+
+**Quick Deploy:**
+
+1. Push code to GitHub:
+   ```bash
+   git add .
+   git commit -m "Deploy to production"
+   git push origin main
+   ```
+
+2. On [Render.com](https://render.com):
+   - Connect GitHub repository: `moldovancsaba/blockmass`
+   - Render auto-detects `render.yaml` configuration
+   - Add `MONGODB_URI` as secret environment variable
+   - Deploy automatically starts
+
+3. Production URL: `https://step-blockchain-api.onrender.com`
+
+4. Verify deployment:
+   ```bash
+   curl https://step-blockchain-api.onrender.com/health
+   curl https://step-blockchain-api.onrender.com/mesh/state
+   ```
+
+**render.yaml Configuration:**
+- Region: Frankfurt (closest to Europe)
+- Build: `npm install && npm run build`
+- Start: `npm start`
+- Health check: `/health` endpoint
+- Auto-deploy on push to main branch
+
 ### Production Checklist
 
-- [ ] Set `NODE_ENV=production`
-- [ ] Use MongoDB connection with authentication
-- [ ] Set secure `MONGODB_URI` (MongoDB Atlas recommended)
-- [ ] Configure firewall to allow only necessary ports
-- [ ] Enable MongoDB replica set for transactions
-- [ ] Set up monitoring (health endpoint polling)
-- [ ] Configure logging (stdout/stderr to log aggregator)
-- [ ] Set up backup strategy for MongoDB
+- [x] Set `NODE_ENV=production` (configured in render.yaml)
+- [x] Use MongoDB connection with authentication (MongoDB Atlas)
+- [x] Set secure `MONGODB_URI` (configured as secret)
+- [x] Enable MongoDB replica set for transactions (Atlas default)
+- [x] Set up monitoring (Render health checks)
+- [ ] Configure logging (stdout/stderr to Render logs)
+- [ ] Set up backup strategy for MongoDB (Atlas automated backups)
 
 ### MongoDB Atlas Setup
 
