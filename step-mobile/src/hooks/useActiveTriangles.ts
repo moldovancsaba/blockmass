@@ -21,11 +21,11 @@ import { Platform } from 'react-native';
 
 // Configuration
 // Use same logic as mesh-client.ts for consistent API targeting
-const USE_LOCAL_DEV = true;
+const USE_LOCAL_DEV = false;
 const PRODUCTION_API_URL = 'https://step-blockchain-api.onrender.com';
 const isWeb = Platform.OS === 'web';
 const API_BASE_URL = USE_LOCAL_DEV && __DEV__
-  ? (isWeb ? 'http://localhost:5500' : 'http://192.168.100.144:5500')
+  ? (isWeb ? 'http://localhost:5500' : 'http://192.168.100.146:5500')
   : PRODUCTION_API_URL;
 
 interface UseActiveTrianglesResult {
