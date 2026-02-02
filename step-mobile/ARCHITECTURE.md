@@ -1,7 +1,7 @@
 # STEP Mobile - Technical Architecture
 
-**Version:** 1.2.1  
-**Last Updated:** 2025-10-17T15:49:39.000Z  
+**Version:** 1.3.0  
+**Last Updated:** 2025-10-18T07:40:28.000Z  
 **Status:** Production Ready
 
 ---
@@ -147,7 +147,7 @@ if (facing >= 0) {
 zoomT = (currentZoom - MIN_ZOOM) / (MAX_ZOOM - MIN_ZOOM);
 FOV = MIN_FOV + (MAX_FOV - MIN_FOV) * zoomT;
 
-// MIN_ZOOM 1.071 (~6km alt) → FOV 20° (telephoto)
+// MIN_ZOOM 1.08004 (~64km alt) → FOV 1° (extreme telephoto)
 // MAX_ZOOM 5.0 (~25,500km alt) → FOV 70° (wide angle)
 ```
 
@@ -250,6 +250,138 @@ discriminant = b² - 4ac;
 t = (-b - √discriminant) / (2a); // Closer intersection
 ```
 
+#### Mining Lifecycle
+
+**Flow:**
+1. User double-taps screen → `handleDoubleTap()`
+2. Raycast to sphere surface → find 3D hit point
+3. Apply inverse rotation matrix → convert to local sphere coordinates
+4. Search mesh state for containing triangle → `findTriangleContainingPoint()`
+5. Increment triangle click count in state
+6. Check if clicks ≥ 2 (subdivision threshold)
+7. If yes: subdivide triangle into 4 children, mark parent as subdivided
+8. Persist updated state to AsyncStorage
+9. Trigger visibility recalculation to render new triangles
+10. Optionally sync state to backend API
+
+**Click Threshold:**
+- Current: 2 clicks (reduced from 10 in v1.1)
+- Subdivision creates 4 children via geodesic midpoints
+- Parent hidden, children inherit level+1 and new color
+
+**State Persistence:**
+```typescript
+// AsyncStorage key: 'mesh_state'
+{
+  triangles: Map<string, MeshTriangle>,
+  lastUpdated: timestamp
+}
+```
+
+**Backend Sync (Optimistic):**
+- Local state updates immediately (no blocking)
+- Background POST to `/api/mesh/sync` with delta
+- Conflict resolution: server wins on mismatch
+
+---
+
+### 5b. GPS Triangle Detection & Highlighting
+
+**Detection Algorithm:**
+```typescript
+// 1. Convert GPS (lat, lon) → 3D unit sphere point
+const gpsPoint = sphericalToCartesian(lat, lon);
+
+// 2. Recursively search icosahedron mesh
+function findTriangleContainingPoint(point, meshState) {
+  // Start with 20 base faces
+  for (let baseFace of icosahedron.faces) {
+    if (pointInTriangle(point, baseFace.vertices)) {
+      // Recurse into subdivided children
+      return findDeepestContainingTriangle(baseFace, point, meshState);
+    }
+  }
+}
+
+// 3. Scalar triple product test for point-in-triangle
+function pointInTriangle(p, [v0, v1, v2]) {
+  // All cross products must have same sign
+  const sign0 = cross(v1 - v0, p - v0).dot(normal);
+  const sign1 = cross(v2 - v1, p - v1).dot(normal);
+  const sign2 = cross(v0 - v2, p - v2).dot(normal);
+  return (sign0 >= 0 && sign1 >= 0 && sign2 >= 0);
+}
+```
+
+**Highlighting:**
+- GPS triangle rendered with red 5px border (SVG overlay or edge geometry)
+- GPS marker: red sphere at radius 1.12 with `depthTest: false` (always visible)
+- GPS edges: LineSegments at radius 1.09 connecting triangle vertices
+- Auto-centering: mesh rotates to show GPS triangle at screen center
+
+---
+
+### 5c. Proof-of-Location System
+
+**Current Status (Phase 2.5 Foundation):**
+- ✅ ProofPayloadV2 type definitions (264 lines)
+- ✅ Device metadata collection (model, OS, app version)
+- ✅ Partial cell tower data (MCC/MNC via expo-cellular)
+- ✅ Mock attestation tokens for development
+- ✅ Confidence score UI (0-100 with breakdown)
+- ⏳ Native modules pending (Play Integrity, DeviceCheck, GNSS raw data)
+
+**Proof Generation Flow:**
+```typescript
+// 1. Collect security data
+const proofData = await collectProofData(location, triangle);
+// Includes: GPS coords, timestamp, triangle ID, device metadata,
+// cell tower info, GNSS data (if available), attestation token
+
+// 2. Build signable message (EIP-191 format)
+const message = buildSignableMessageV2(proofData);
+// Format: "lat|lon|triangleId|timestamp|nonce|..."
+
+// 3. Sign with wallet private key
+const signature = await wallet.signMessage(message);
+
+// 4. Submit to backend
+const result = await submitProofV2({
+  ...proofData,
+  signature,
+  walletAddress: wallet.address
+});
+
+// 5. Display confidence score and breakdown
+showConfidenceUI(result.confidence, result.scores);
+```
+
+**Confidence Scoring (Backend):**
+- Signature validity: 10 pts
+- GPS accuracy (<50m): 10 pts
+- Speed gate (realistic movement): 10 pts
+- Moratorium (time since last proof): 10 pts
+- Hardware attestation: 25 pts (mock: 0)
+- GNSS raw data: 15 pts (pending native module)
+- Cell tower triangulation: 10 pts (partial: MCC/MNC only)
+- WiFi signals: 10 pts (not yet collected)
+- Witness proofs: 10 pts (future)
+- **Total possible:** 100 pts
+
+**Development Scores:**
+- Android: 60-75/100
+- iOS: 65-80/100
+
+**Production Target (with native modules):**
+- Android: 95-100/100 (full GNSS data available)
+- iOS: 85-90/100 (no GNSS raw data on iOS)
+
+**Files:**
+- `src/types/proof-v2.ts` - Type definitions
+- `src/lib/proof-collector.ts` - Data collection (493 lines)
+- `src/lib/mesh-client.ts` - API integration
+- `src/screens/MapScreen.tsx` - UI and mining flow
+
 ---
 
 ### 6. Visibility Update Triggers
@@ -265,7 +397,23 @@ t = (-b - √discriminant) / (2a); // Closer intersection
 
 ---
 
-### 7. Performance Optimizations
+### 7. Level of Detail (LOD) + Coverage Reliability
+
+#### Screen-Space LOD (100px threshold)
+- Triangles smaller than 100px edge length on screen are NOT rendered individually
+- Their parent triangle is shown instead, using the deepest descendant's color (most refined level)
+- Results in 200-500 triangles on screen with identical perceived detail
+- Adaptive across zoom levels, ensures stable performance
+
+#### Coverage Detector (7×7 sampling) with Auto-Fix
+- Samples a 7×7 grid of screen points every second
+- Raycasts each point to verify it's covered by a visible triangle
+- If coverage drops below 75% three times consecutively, forces a rebuild and relaxes culling
+- Logs coverage percentage and auto-fix actions
+
+---
+
+### 8. Performance Optimizations
 
 #### 256 Triangle Limit (v1.2+)
 
@@ -360,13 +508,21 @@ rotY = -longitude; // NOT +longitude
 
 ## Configuration
 
-### Zoom Limits
+### Zoom & FOV
 
 ```typescript
-const MIN_ZOOM = 1.071;  // ~6.4km altitude
-const MAX_ZOOM = 5.0;    // ~25,500km altitude
-const MIN_FOV = 20;      // Telephoto lens
-const MAX_FOV = 70;      // Wide angle lens
+const MIN_ZOOM = 1.08004; // ~64 km altitude (prevents disappearing triangles)
+const MAX_ZOOM = 5.0;     // ~25,500 km altitude
+const MIN_FOV = 1;        // Extreme telephoto (10× stronger telescope)
+const MAX_FOV = 70;       // Wide angle
+```
+
+### Culling Thresholds
+
+```typescript
+const FRUSTUM_CULLING_THRESHOLD = 2.0; // Disable frustum culling when too close
+const MIN_SCREEN_SIZE_PX = 100;        // LOD threshold (edge length in pixels)
+const MESH_REBUILD_IDLE_MS = 250;      // Delay after movement stops
 ```
 
 **Altitude Calculation:**

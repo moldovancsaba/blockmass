@@ -578,6 +578,10 @@ export default function MeshMining3D() {
   const [selectedTriangleId, setSelectedTriangleId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [altitude, setAltitude] = useState(400000); // Start at ISS altitude
+  
+  // Mining timer state - 3 second cooldown per triangle
+  const [miningCooldowns, setMiningCooldowns] = useState<Map<string, number>>(new Map());
+  const [miningFeedback, setMiningFeedback] = useState<{id: string; message: string; type: 'success' | 'error'} | null>(null);
 
   // API base URL - use environment variable or fallback to localhost
   const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5500';
@@ -663,6 +667,7 @@ export default function MeshMining3D() {
 
   /**
    * Handle triangle mining (click event)
+   * - Check 3-second cooldown
    * - Increment click counter
    * - Update status based on clicks
    * - Subdivide at 11 clicks
@@ -671,7 +676,30 @@ export default function MeshMining3D() {
     const triangle = triangles.get(triangleId);
     if (!triangle || triangle.status === 'subdivided') return;
 
+    // Check 3-second cooldown
+    const lastMine = miningCooldowns.get(triangleId) || 0;
+    const now = Date.now();
+    
+    if (now - lastMine < 3000) {
+      const remaining = Math.ceil((3000 - (now - lastMine)) / 1000);
+      setMiningFeedback({
+        id: triangleId,
+        message: `Wait ${remaining}s before mining again`,
+        type: 'error'
+      });
+      
+      // Clear feedback after 1 second
+      setTimeout(() => {
+        setMiningFeedback(prev => prev?.id === triangleId ? null : prev);
+      }, 1000);
+      
+      return;
+    }
+
     console.log(`⛏️ Mining ${triangleId} (clicks: ${triangle.clicks} → ${triangle.clicks + 1})`);
+
+    // Mark cooldown
+    setMiningCooldowns(prev => new Map(prev).set(triangleId, now));
 
     // Increment clicks
     const newClicks = triangle.clicks + 1;
@@ -682,6 +710,15 @@ export default function MeshMining3D() {
     else if (newClicks >= 8 && newClicks <= 10) newStatus = 'mined_out';
     else if (newClicks === 11) {
       // Subdivide!
+      setMiningFeedback({
+        id: triangleId,
+        message: '✨ Subdividing into 4 children!',
+        type: 'success'
+      });
+      setTimeout(() => {
+        setMiningFeedback(prev => prev?.id === triangleId ? null : prev);
+      }, 2000);
+      
       await subdivideTriangle(triangleId);
       return;
     }
@@ -695,6 +732,31 @@ export default function MeshMining3D() {
 
     setTriangles(new Map(triangles).set(triangleId, updatedTriangle));
     setSelectedTriangleId(triangleId);
+    
+    // Show feedback
+    if (newClicks === 1) {
+      setMiningFeedback({
+        id: triangleId,
+        message: `First click! (${newClicks}/11)`,
+        type: 'success'
+      });
+    } else if (newClicks === 11) {
+      setMiningFeedback({
+        id: triangleId,
+        message: '✨ Ready to subdivide!',
+        type: 'success'
+      });
+    } else {
+      setMiningFeedback({
+        id: triangleId,
+        message: `+1 click (${newClicks}/11)`,
+        type: 'success'
+      });
+    }
+    
+    setTimeout(() => {
+      setMiningFeedback(prev => prev?.id === triangleId ? null : prev);
+    }, 1000);
   }
 
   /**
@@ -954,6 +1016,41 @@ export default function MeshMining3D() {
               <div>Level: {selectedTriangle.level}</div>
               <div>Clicks: {selectedTriangle.clicks}/11</div>
               <div>Status: {selectedTriangle.status}</div>
+              
+              {/* Cooldown indicator */}
+              {(() => {
+                const lastMine = miningCooldowns.get(selectedTriangle.id) || 0;
+                const now = Date.now();
+                const elapsed = now - lastMine;
+                const remaining = Math.max(0, 3000 - elapsed);
+                
+                if (remaining > 0 && selectedTriangle.clicks < 11) {
+                  return (
+                    <div style={{ 
+                      marginTop: '8px', 
+                      padding: '4px 8px', 
+                      background: 'rgba(255, 107, 107, 0.3)',
+                      borderRadius: '4px',
+                      fontSize: '10px'
+                    }}>
+                      ⏳ Cooldown: {(remaining / 1000).toFixed(1)}s
+                    </div>
+                  );
+                } else if (selectedTriangle.clicks < 11) {
+                  return (
+                    <div style={{ 
+                      marginTop: '8px', 
+                      padding: '4px 8px', 
+                      background: 'rgba(0, 255, 136, 0.2)',
+                      borderRadius: '4px',
+                      fontSize: '10px'
+                    }}>
+                      ✅ Ready to mine
+                    </div>
+                  );
+                }
+                return null;
+              })()}
             </div>
           </div>
         )}
@@ -976,15 +1073,36 @@ export default function MeshMining3D() {
           ⛏️ Mining Controls
         </div>
         <div style={{ fontSize: '11px', lineHeight: '1.6' }}>
-          <div>🖱️ Drag: Rotate Earth</div>
-          <div>🔍 Scroll: Zoom (ISS ↔ Ground)</div>
-          <div>👆 Click Triangle: Mine (+1 click)</div>
-          <div>💎 11 Clicks: Subdivide into 4</div>
-          <div style={{ marginTop: '8px', color: '#ffaa00' }}>
-            ⚠️ Max 512 triangles visible<br/>(zoom auto-restricted)
+            <div>🖱️ Drag: Rotate Earth</div>
+            <div>🔍 Scroll: Zoom (ISS ↔ Ground)</div>
+            <div>👆 Click Triangle: Mine (+1 click)</div>
+            <div>⏱️ 3-second cooldown per triangle</div>
+            <div>💎 11 Clicks: Subdivide into 4</div>
+            <div style={{ marginTop: '8px', color: '#ffaa00' }}>
+              ⚠️ Max 512 triangles visible<br/>(zoom auto-restricted)
+            </div>
           </div>
         </div>
-      </div>
+
+        {/* Mining Feedback Toast */}
+        {miningFeedback && (
+          <div style={{
+            position: 'absolute',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            background: miningFeedback.type === 'success' ? 'rgba(0, 255, 136, 0.9)' : 'rgba(255, 107, 107, 0.9)',
+            color: '#001133',
+            padding: '15px 30px',
+            borderRadius: '12px',
+            fontSize: '18px',
+            fontWeight: 'bold',
+            pointerEvents: 'none',
+            zIndex: 1000,
+          }}>
+            {miningFeedback.message}
+          </div>
+        )}
     </div>
   );
 }

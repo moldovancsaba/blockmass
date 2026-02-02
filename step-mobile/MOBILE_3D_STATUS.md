@@ -1,6 +1,6 @@
 # STEP Mobile 3D Visualization Status
 
-**Date:** 2025-01-09  
+**Last Updated:** 2025-10-18T12:00:00.000Z  
 **Version:** 1.1.0
 
 ## ✅ MOBILE APP - FULLY WORKING
@@ -13,6 +13,12 @@
 - ✅ **Bright emissive materials** (RED for current triangle, GREEN for neighbors)
 - ✅ **Camera positioned at z=3.0** (far outside like frontend POC)
 - ✅ **Bright lighting** (ambient + 3 directional lights + point light)
+
+## Update — 2025-10-18T12:00:00.000Z
+- Rendering now uses a merged BufferGeometry for visible triangles (single draw call).
+- Backface + frustum culling computed after rotation; adaptive thresholds near surface.
+- Screen-space LOD: triangles with on-screen edge <100px collapse to parent while showing the deepest child’s color.
+- Camera uses dynamic FOV with minimum altitude ~64 km to prevent disappearance; mesh rebuilds debounced until gesture end for smooth 60fps.
 
 ### Touch Controls
 - ✅ **Single finger drag → Rotate Earth** (smooth 3D rotation)

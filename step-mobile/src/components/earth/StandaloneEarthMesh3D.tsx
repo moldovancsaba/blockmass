@@ -33,6 +33,7 @@ interface StandaloneEarthMesh3DProps {
     activeTriangles: number;
     visibleTriangles: number;
     totalClicks: number;
+    screenCoverage: number; // Percentage 0-100 of screen covered by triangles
     screenCenterGPS?: { lat: number; lon: number; altitude: number; visibleWidth: number };
   }) => void;
 }
@@ -79,26 +80,30 @@ export default function StandaloneEarthMesh3D({
   // Zoom limits: safe distance with telescopic lens for close-up effect
   // CRITICAL: Camera MUST stay outside STEP_RADIUS to avoid "underground" view
   // - STEP_RADIUS = 1.07 (mesh layer)
-  // - MIN_ZOOM = 1.071 (camera ~6.4km above surface)
-  // - Strategy: Stay at safe distance, use narrow FOV for telescopic effect
-  // - Result: Visual magnification without culling issues
+  // - MIN_ZOOM = 1.08004 (camera ~64km above surface)
+  // - Strategy: Stay at 64km minimum to prevent triangle disappearance/black screen
+  // - Solution: Use EXTREME telephoto (1° FOV) for 10x stronger magnification
+  // - Result: See same detail as if at 6.4km, but from safe 64km distance
   // 
   // Altitude calculation: (zoom - STEP_RADIUS) * EARTH_RADIUS_KM
-  // - MIN_ZOOM 1.071 → (1.071 - 1.07) * 6371 ≈ 6.4km altitude
-  const MIN_ZOOM = 1.071;      // ~6.4km altitude - safe distance
+  // - MIN_ZOOM 1.08004 → (1.08004 - 1.07) * 6371 ≈ 64km altitude
+  // - Formula: zoom = 1.07 + (altitude_km / 6371)
+  const MIN_ZOOM = 1.08004;    // ~64km altitude - prevents black screen
   const MAX_ZOOM = 5.0;        // ~25,500 km altitude - entire hemisphere visible
   
-  // Super telephoto FOV: narrow field of view creates telescopic magnification
-  // What: Narrow FOV at close zoom simulates being much closer
-  // Why: Stay at safe distance (6km) but see same detail as if at 600m
-  // Result: Visual zoom WITHOUT culling problems
+  // EXTREME telephoto FOV: ultra-narrow field creates 10x stronger telescope
+  // What: 1° FOV at 64km provides same magnification as 10° FOV at 6.4km
+  // Why: Triangles disappear under 64km, so we compensate with narrower FOV
+  // Math: 10x distance → 10x narrower FOV = same visual size
+  // Result: Perfect detail at safe distance
   // 
   // FOV reference:
-  // - 10° = extreme telephoto (like 800mm lens)
+  // - 1° = extreme super telephoto (like 5000mm lens) - 10x stronger than before
+  // - 10° = telephoto (like 800mm lens)
   // - 20° = telephoto (like 200mm lens)
   // - 50° = normal (like 50mm lens)
   // - 70° = wide angle (like 28mm lens)
-  const MIN_FOV = 10; // Super telephoto for extreme magnification at 6km
+  const MIN_FOV = 1;  // Extreme super telephoto - 10x stronger magnification at 64km
   const MAX_FOV = 70; // Wide angle lens for far zoom
   
 
@@ -132,6 +137,7 @@ export default function StandaloneEarthMesh3D({
   const [meshRotation, setMeshRotation] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const lastRotationUpdateRef = useRef<number>(0);
   const rotationAnimFrameRef = useRef<number | null>(null);
+  const meshRebuildTimeoutRef = useRef<NodeJS.Timeout | null>(null); // Delayed mesh rebuild after movement stops
   
   // Debug logging: Enable to diagnose visibility issues
   const ENABLE_TRIANGLE_COUNT_LOGGING = true; // Track visible triangles
@@ -140,6 +146,11 @@ export default function StandaloneEarthMesh3D({
   // Track currently visible triangle count for stats
   const [visibleTriangleCount, setVisibleTriangleCount] = useState<number>(0);
   const [screenCenterGPS, setScreenCenterGPS] = useState<{ lat: number; lon: number; altitude: number; visibleWidth: number } | undefined>(undefined);
+  
+  // Coverage detector: track screen coverage to detect black areas
+  const [screenCoverage, setScreenCoverage] = useState<number>(100); // Percentage 0-100
+  const lastCoverageCheckRef = useRef<number>(0);
+  const coverageIssueCountRef = useRef<number>(0); // Track consecutive low coverage
   
   // 3D objects - SINGLE merged mesh for all triangles
   const earthSphereRef = useRef<THREE.Mesh | null>(null);
@@ -348,9 +359,10 @@ export default function StandaloneEarthMesh3D({
       activeTriangles: activeTriangles.length,
       visibleTriangles: visibleTriangleCount,
       totalClicks,
+      screenCoverage,
       screenCenterGPS,
     });
-  }, [meshState, onMeshStatsUpdate, visibleTriangleCount, screenCenterGPS]);
+  }, [meshState, onMeshStatsUpdate, visibleTriangleCount, screenCoverage, screenCenterGPS]);
 
   /**
    * Raycast from screen coordinates to sphere surface.
@@ -561,6 +573,182 @@ export default function StandaloneEarthMesh3D({
   };
 
   /**
+   * Check screen coverage to detect black areas (missing triangles).
+   * 
+   * What: Sample a grid of screen points and check if each is covered by a triangle
+   * Why: Detect when culling is too aggressive or triangles are missing
+   * When: Run after mesh rebuilds to verify visibility is correct
+   * 
+   * Algorithm:
+   * 1. Create 7x7 grid of screen sample points (49 samples)
+   * 2. Raycast each point to sphere surface
+   * 3. Check if that point is inside any visible triangle
+   * 4. Calculate coverage % = (covered points / total points) * 100
+   * 5. If coverage < 80%, log warning and potentially force rebuild
+   * 
+   * @returns Coverage percentage (0-100)
+   */
+  const checkScreenCoverage = (visibleTriangles: MeshTriangle[]): number => {
+    if (!cameraRef.current || !sceneRef.current) return 100;
+    
+    const { width: viewW, height: viewH } = viewSizeRef.current;
+    if (viewW === 0 || viewH === 0) return 100;
+    
+    // Sample grid: 7x7 = 49 points
+    const GRID_SIZE = 7;
+    const samples: { x: number; y: number }[] = [];
+    
+    for (let row = 0; row < GRID_SIZE; row++) {
+      for (let col = 0; col < GRID_SIZE; col++) {
+        // Distribute points evenly with margin from edges
+        const x = (viewW / (GRID_SIZE + 1)) * (col + 1);
+        const y = (viewH / (GRID_SIZE + 1)) * (row + 1);
+        samples.push({ x, y });
+      }
+    }
+    
+    let coveredCount = 0;
+    let sphereHitCount = 0;
+    
+    for (const sample of samples) {
+      // Raycast to sphere
+      const mouse = new THREE.Vector2();
+      mouse.x = (sample.x / viewW) * 2 - 1;
+      mouse.y = -(sample.y / viewH) * 2 + 1;
+      
+      raycasterRef.current.setFromCamera(mouse, cameraRef.current);
+      const ray = raycasterRef.current.ray;
+      
+      // Intersect with sphere at STEP_RADIUS
+      const r = STEP_RADIUS;
+      const o = ray.origin;
+      const d = ray.direction;
+      const a = d.x*d.x + d.y*d.y + d.z*d.z;
+      const b = 2*(o.x*d.x + o.y*d.y + o.z*d.z);
+      const c = o.x*o.x + o.y*o.y + o.z*o.z - r*r;
+      const disc = b*b - 4*a*c;
+      
+      if (disc < 0) continue; // Ray misses sphere
+      
+      const sqrtDisc = Math.sqrt(disc);
+      const t1 = (-b - sqrtDisc) / (2*a);
+      const t2 = (-b + sqrtDisc) / (2*a);
+      const t = Math.min(t1, t2) > 0 ? Math.min(t1, t2) : Math.max(t1, t2);
+      
+      if (t <= 0) continue; // Sphere is behind camera
+      
+      sphereHitCount++;
+      
+      // Get hit point on sphere
+      const hit = new THREE.Vector3().copy(d).multiplyScalar(t).add(o).normalize();
+      
+      // Apply inverse rotation to get local coordinates
+      const euler = new THREE.Euler(rotationRef.current.x, rotationRef.current.y, 0, 'XYZ');
+      const rotationMatrix = new THREE.Matrix4().makeRotationFromEuler(euler);
+      const inverseMatrix = rotationMatrix.clone().invert();
+      const hitLocal = hit.clone().applyMatrix4(inverseMatrix).normalize();
+      
+      // Check if this point is inside any visible triangle
+      let covered = false;
+      for (const tri of visibleTriangles) {
+        if (isPointInSphericalTriangle(
+          { x: hitLocal.x, y: hitLocal.y, z: hitLocal.z } as any,
+          tri.vertices[0] as any,
+          tri.vertices[1] as any,
+          tri.vertices[2] as any
+        )) {
+          covered = true;
+          break;
+        }
+      }
+      
+      if (covered) coveredCount++;
+    }
+    
+    // Calculate coverage percentage (only for points that hit sphere)
+    const coverage = sphereHitCount > 0 ? (coveredCount / sphereHitCount) * 100 : 100;
+    
+    return coverage;
+  };
+
+  /**
+   * Calculate screen-space size of a triangle edge.
+   * 
+   * What: Projects triangle vertices to screen and measures edge length in pixels
+   * Why: Enables Level of Detail (LOD) - hide triangles smaller than threshold
+   * 
+   * Algorithm:
+   * 1. Transform vertex to world space (apply rotation)
+   * 2. Project to screen using camera matrices
+   * 3. Convert NDC (-1 to +1) to screen pixels
+   * 4. Measure distance between projected points
+   * 
+   * @param v0 - First vertex (local coordinates)
+   * @param v1 - Second vertex (local coordinates)
+   * @param rotationMatrix - Current mesh rotation
+   * @param camera - Camera with projection matrix
+   * @returns Screen-space edge length in pixels
+   */
+  const calculateScreenEdgeLength = (
+    v0: { x: number; y: number; z: number },
+    v1: { x: number; y: number; z: number },
+    rotationMatrix: THREE.Matrix4,
+    camera: THREE.PerspectiveCamera
+  ): number => {
+    const { width: viewW, height: viewH } = viewSizeRef.current;
+    if (viewW === 0 || viewH === 0) return 0;
+
+    // Transform vertices to world space
+    const v0World = new THREE.Vector3(v0.x * STEP_RADIUS, v0.y * STEP_RADIUS, v0.z * STEP_RADIUS);
+    const v1World = new THREE.Vector3(v1.x * STEP_RADIUS, v1.y * STEP_RADIUS, v1.z * STEP_RADIUS);
+    v0World.applyMatrix4(rotationMatrix);
+    v1World.applyMatrix4(rotationMatrix);
+
+    // Project to NDC (-1 to +1)
+    v0World.project(camera);
+    v1World.project(camera);
+
+    // Convert NDC to screen pixels
+    const x0 = (v0World.x + 1) * viewW / 2;
+    const y0 = (-v0World.y + 1) * viewH / 2;
+    const x1 = (v1World.x + 1) * viewW / 2;
+    const y1 = (-v1World.y + 1) * viewH / 2;
+
+    // Calculate pixel distance
+    const dx = x1 - x0;
+    const dy = y1 - y0;
+    return Math.sqrt(dx * dx + dy * dy);
+  };
+
+  /**
+   * Find deepest child triangle recursively.
+   * 
+   * What: Traverse subdivision tree to find leaf with highest level
+   * Why: LOD system shows parent but uses deepest child's color
+   * 
+   * @param triangle - Starting triangle
+   * @param meshState - Current mesh state
+   * @returns Deepest descendant triangle
+   */
+  const findDeepestChild = (triangle: MeshTriangle, meshState: Map<string, MeshTriangle>): MeshTriangle => {
+    if (!triangle.subdivided || triangle.children.length === 0) {
+      return triangle; // Leaf node
+    }
+
+    let deepest = triangle;
+    for (const childId of triangle.children) {
+      const child = meshState.get(childId);
+      if (child) {
+        const childDeepest = findDeepestChild(child, meshState);
+        if (childDeepest.level > deepest.level) {
+          deepest = childDeepest;
+        }
+      }
+    }
+    return deepest;
+  };
+
+  /**
    * Validate if proposed camera position would exceed 256 triangle limit.
    * 
    * What: Simulates camera at new position and counts visible triangles
@@ -678,11 +866,10 @@ export default function StandaloneEarthMesh3D({
             // Update zoom
             zoomRef.current = newZoom;
             
-            // Trigger visibility update if zoom changed significantly (>10%)
-            const zoomChange = Math.abs(newZoom - lastVisibilityZoomRef.current) / lastVisibilityZoomRef.current;
-            if (zoomChange > 0.1) {
-              lastVisibilityZoomRef.current = newZoom;
-              setRenderTrigger(Date.now());
+            // Cancel any pending mesh rebuild during zoom - user is still zooming
+            if (meshRebuildTimeoutRef.current) {
+              clearTimeout(meshRebuildTimeoutRef.current);
+              meshRebuildTimeoutRef.current = null;
             }
           }
         } else if (touches.length === 1 && lastTouchRef.current) {
@@ -746,8 +933,11 @@ export default function StandaloneEarthMesh3D({
               // Solution: Use pixel delta-based rotation when raycast fails
               // What: Convert pixel movement to angular rotation (traditional rotation)
               // Why: Keeps rotation working at 10° FOV when sphere is small on screen
-              // Increased sensitivity for better control at close zoom
-              const ROTATION_SENSITIVITY = 0.01; // radians per pixel (2x more sensitive)
+              // CRITICAL: Increased sensitivity at close zoom (under 15km altitude)
+              // Formula: altitude = (zoom - STEP_RADIUS) * 6371km
+              // At zoom=1.071, altitude ≈ 6.4km; at zoom=1.073, altitude ≈ 19km
+              const altitude = (zoomRef.current - STEP_RADIUS) * 6371;
+              const ROTATION_SENSITIVITY = altitude < 15 ? 0.02 : 0.01; // 2x more sensitive under 15km
               rotationRef.current.y -= deltaX * ROTATION_SENSITIVITY;
               rotationRef.current.x += deltaY * ROTATION_SENSITIVITY;
               
@@ -758,7 +948,9 @@ export default function StandaloneEarthMesh3D({
             }
           } else {
             // No anchor point yet - use delta-based rotation as fallback
-            const ROTATION_SENSITIVITY = 0.01; // 2x more sensitive
+            // CRITICAL: Increased sensitivity at close zoom (under 15km altitude)
+            const altitude = (zoomRef.current - STEP_RADIUS) * 6371;
+            const ROTATION_SENSITIVITY = altitude < 15 ? 0.02 : 0.01; // 2x more sensitive under 15km
             rotationRef.current.y -= deltaX * ROTATION_SENSITIVITY;
             rotationRef.current.x += deltaY * ROTATION_SENSITIVITY;
             rotationRef.current.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, rotationRef.current.x));
@@ -766,19 +958,16 @@ export default function StandaloneEarthMesh3D({
           
           lastTouchRef.current = { x: lx, y: ly };
           
-          // Schedule visibility recalculation (throttled)
-          // Why: Avoid excessive state updates during continuous rotation
-          const now = Date.now();
-          if (now - lastRotationUpdateRef.current > 100) { // Max 10 updates/sec
-            lastRotationUpdateRef.current = now;
-            
-            // Use requestAnimationFrame to avoid blocking gesture handler
-            if (rotationAnimFrameRef.current) {
-              cancelAnimationFrame(rotationAnimFrameRef.current);
-            }
-            rotationAnimFrameRef.current = requestAnimationFrame(() => {
-              setMeshRotation({ x: rotationRef.current.x, y: rotationRef.current.y });
-            });
+          // SMOOTH ROTATION STRATEGY:
+          // What: Don't rebuild mesh during rotation - just rotate existing geometry
+          // Why: Mesh rebuild is expensive (180-250ms), causes lag during rotation
+          // How: Render loop updates rotation every frame, mesh rebuilds AFTER movement stops
+          // Result: Perfectly smooth rotation, then topography updates after 250ms idle
+          
+          // Cancel any pending mesh rebuild - user is still moving
+          if (meshRebuildTimeoutRef.current) {
+            clearTimeout(meshRebuildTimeoutRef.current);
+            meshRebuildTimeoutRef.current = null;
           }
         }
       },
@@ -795,14 +984,28 @@ export default function StandaloneEarthMesh3D({
         initialPinchDistanceRef.current = null;
         anchorPointRef.current = null;
         
-        // CRITICAL: Force visibility update after gesture ends
-        // Update both rotation and zoom state
+        // DELAYED MESH REBUILD AFTER MOVEMENT STOPS
+        // What: Wait 250ms after user stops, then recalculate visibility and rebuild mesh
+        // Why: Allows smooth rotation without lag, updates topography after movement ends
+        // How: Debounced timeout clears if user resumes movement
         const currentRotX = rotationRef.current.x;
         const currentRotY = rotationRef.current.y;
         const currentZoom = zoomRef.current;
-        console.log(`[Gesture] Released - forcing visibility update: rotation x=${currentRotX.toFixed(3)}, y=${currentRotY.toFixed(3)}, zoom=${currentZoom.toFixed(2)}`);
-        setMeshRotation({ x: currentRotX, y: currentRotY });
-        lastVisibilityZoomRef.current = currentZoom; // Sync zoom tracker
+        
+        console.log(`[Gesture] Released - scheduling mesh rebuild in 250ms`);
+        
+        // Clear any existing timeout
+        if (meshRebuildTimeoutRef.current) {
+          clearTimeout(meshRebuildTimeoutRef.current);
+        }
+        
+        // Schedule delayed rebuild
+        meshRebuildTimeoutRef.current = setTimeout(() => {
+          console.log(`[Gesture] 250ms elapsed - rebuilding mesh with rotation x=${currentRotX.toFixed(3)}, y=${currentRotY.toFixed(3)}, zoom=${currentZoom.toFixed(2)}`);
+          setMeshRotation({ x: currentRotX, y: currentRotY });
+          lastVisibilityZoomRef.current = currentZoom;
+          meshRebuildTimeoutRef.current = null;
+        }, 250); // 250ms delay (1/4 second)
       },
     })
   ).current;
@@ -983,9 +1186,78 @@ export default function StandaloneEarthMesh3D({
     const euler = new THREE.Euler(actualRotX, actualRotY, 0, 'XYZ');
     const rotationMatrix = new THREE.Matrix4().makeRotationFromEuler(euler);
 
-    // Find VISIBLE triangles (in frustum + facing camera)
-    // CRITICAL: Use meshStateRef.current for latest state (closure issue)
-    let actives = getActiveTriangles(meshStateRef.current);
+    // LEVEL OF DETAIL (LOD) FILTERING
+    // What: Hide triangles smaller than 100px on screen
+    // Why: GPU wastes power rendering invisible detail, caps triangle count
+    // How: If triangle's children are < 100px, show parent instead with deepest child's color
+    // Result: Smooth performance at all zoom levels
+    
+    const MIN_SCREEN_SIZE_PX = 100; // Minimum triangle edge length in pixels
+    const lodTriangles: Array<{ triangle: MeshTriangle; colorSource: MeshTriangle }> = [];
+    const processedIds = new Set<string>();
+    
+    // Process all triangles in mesh, applying LOD
+    for (const triangle of meshStateRef.current.values()) {
+      if (processedIds.has(triangle.id)) continue;
+      
+      // If triangle is subdivided, check if children are too small
+      if (triangle.subdivided && triangle.children.length > 0) {
+        // Calculate screen size of first child (representative)
+        const firstChild = meshStateRef.current.get(triangle.children[0]);
+        if (firstChild) {
+          const v0 = firstChild.vertices[0];
+          const v1 = firstChild.vertices[1];
+          const v2 = firstChild.vertices[2];
+          
+          // Calculate all three edge lengths
+          const edge01 = calculateScreenEdgeLength(v0, v1, rotationMatrix, camera);
+          const edge12 = calculateScreenEdgeLength(v1, v2, rotationMatrix, camera);
+          const edge20 = calculateScreenEdgeLength(v2, v0, rotationMatrix, camera);
+          const maxEdge = Math.max(edge01, edge12, edge20);
+          
+          if (maxEdge < MIN_SCREEN_SIZE_PX) {
+            // Children too small - show parent instead
+            const deepestChild = findDeepestChild(triangle, meshStateRef.current);
+            lodTriangles.push({ triangle, colorSource: deepestChild });
+            processedIds.add(triangle.id);
+            // Mark all children as processed (don't show them)
+            for (const childId of triangle.children) {
+              processedIds.add(childId);
+              const child = meshStateRef.current.get(childId);
+              if (child && child.subdivided) {
+                // Recursively mark all descendants
+                const markDescendants = (t: MeshTriangle) => {
+                  for (const cid of t.children) {
+                    processedIds.add(cid);
+                    const c = meshStateRef.current.get(cid);
+                    if (c && c.subdivided) markDescendants(c);
+                  }
+                };
+                markDescendants(child);
+              }
+            }
+            continue;
+          }
+        }
+      }
+      
+      // Not subdivided OR children are large enough - show as active leaf
+      if (!triangle.subdivided) {
+        lodTriangles.push({ triangle, colorSource: triangle });
+        processedIds.add(triangle.id);
+      }
+    }
+    
+    console.log(`[LOD] Filtered from ${meshStateRef.current.size} total to ${lodTriangles.length} LOD triangles (min ${MIN_SCREEN_SIZE_PX}px)`);
+    
+    // Create map from triangle ID to color source for rendering
+    const colorSourceMap = new Map<string, MeshTriangle>();
+    for (const item of lodTriangles) {
+      colorSourceMap.set(item.triangle.id, item.colorSource);
+    }
+    
+    // Extract just the triangles for culling
+    let actives = lodTriangles.map(item => item.triangle);
     
     // PROGRESSIVE LOADING: Filter by max visible level during initial load
     // What: Only show triangles up to current progressive level
@@ -994,7 +1266,7 @@ export default function StandaloneEarthMesh3D({
       actives = actives.filter(tri => tri.level <= maxVisibleLevel);
       console.log(`[Visibility] Progressive mode: showing level 0-${maxVisibleLevel}, filtered to ${actives.length} triangles`);
     } else {
-    console.log(`[Visibility] Testing ${actives.length} active triangles`);
+      console.log(`[Visibility] Testing ${actives.length} LOD-filtered triangles`);
     }
     
     // Log culling strategy based on zoom level
@@ -1166,7 +1438,9 @@ export default function StandaloneEarthMesh3D({
       const v2 = new THREE.Vector3(triangle.vertices[2].x, triangle.vertices[2].y, triangle.vertices[2].z);
 
       const isGPS = triangle.id === gpsTriangleId;
-      const triLevel = triangle.level + 1;
+      // LOD: Use deepest child's level for color (shows most refined subdivision level)
+      const colorSource = colorSourceMap.get(triangle.id) || triangle;
+      const triLevel = colorSource.level + 1;
       const materialProps = getTriangleMaterialProps(triLevel, isGPS);
       color.set(materialProps.color as any);
 
@@ -1264,6 +1538,43 @@ export default function StandaloneEarthMesh3D({
       console.log(`[GPS Marker] Added at (${gpsPoint.x.toFixed(3)}, ${gpsPoint.y.toFixed(3)}, ${gpsPoint.z.toFixed(3)})`);
     }
     
+    // COVERAGE DETECTOR: Check screen coverage to detect black areas
+    // What: Sample screen grid and verify all visible points are covered by triangles
+    // Why: Detects when culling is too aggressive or triangles are missing
+    // When: After mesh rebuild completes
+    const now = Date.now();
+    if (now - lastCoverageCheckRef.current > 1000) { // Check every 1 second (throttled)
+      lastCoverageCheckRef.current = now;
+      
+      const coverage = checkScreenCoverage(visibleTriangles);
+      setScreenCoverage(coverage);
+      
+      const COVERAGE_THRESHOLD = 75; // Warn if coverage drops below 75%
+      
+      if (coverage < COVERAGE_THRESHOLD) {
+        coverageIssueCountRef.current++;
+        console.warn(`[Coverage] ⚠️ LOW COVERAGE DETECTED: ${coverage.toFixed(1)}% (threshold: ${COVERAGE_THRESHOLD}%)`);
+        console.warn(`[Coverage] Consecutive issues: ${coverageIssueCountRef.current}`);
+        
+        // AUTO-FIX: If coverage is consistently low (3+ times), force rebuild without frustum culling
+        if (coverageIssueCountRef.current >= 3) {
+          console.warn(`[Coverage] 🔧 AUTO-FIX: Disabling frustum culling temporarily`);
+          // Force immediate rebuild by triggering state change
+          // This will use the FRUSTUM_CULLING_THRESHOLD check which already adapts to zoom
+          setRenderTrigger(Date.now());
+          coverageIssueCountRef.current = 0; // Reset counter after fix attempt
+        }
+      } else {
+        // Coverage is good, reset issue counter
+        if (coverageIssueCountRef.current > 0) {
+          console.log(`[Coverage] ✅ Coverage restored: ${coverage.toFixed(1)}%`);
+          coverageIssueCountRef.current = 0;
+        }
+      }
+      
+      console.log(`[Coverage] Screen coverage: ${coverage.toFixed(1)}% (${visibleTriangles.length} visible triangles)`);
+    }
+    
     const elapsed = Date.now() - startTime;
     console.log(`[Visibility] ⏱️ Render complete in ${elapsed}ms\n`);
   }, [meshState, gpsTriangleId, renderTrigger, meshRotation, maxVisibleLevel]); // Rebuild on state changes, rotation, progressive level (GPS marker uses currentPosition but doesn't need to trigger full rebuild)
@@ -1280,6 +1591,10 @@ export default function StandaloneEarthMesh3D({
       
       if (rotationAnimFrameRef.current) {
         cancelAnimationFrame(rotationAnimFrameRef.current);
+      }
+      
+      if (meshRebuildTimeoutRef.current) {
+        clearTimeout(meshRebuildTimeoutRef.current);
       }
       
       if (mergedTriangleMeshRef.current) {

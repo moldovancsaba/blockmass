@@ -57,6 +57,15 @@
 
 ---
 
+## Spherical Mesh Internals
+
+- Base mesh: 20-face icosahedron recursively subdivided; triangle IDs encode hierarchical path.
+- Rendering: All visible triangles are merged into one BufferGeometry to achieve a single draw call.
+- Culling: Backface and frustum culling are computed after applying the current rotation; thresholds relax when extremely close to the surface.
+- Level of Detail (LOD): If a triangle’s on-screen edge length is below 100px, its parent is rendered instead, using the deepest descendant’s color to preserve perceived detail.
+- Camera: Dynamic FOV from ~1° to 70° with a minimum viewing altitude of ~64 km to avoid disappearance artifacts; zoom is validated against triangle-count limits.
+- Interaction: Rotation and pinch-zoom run at 60fps; mesh rebuilds are debounced until gesture end to minimize CPU while preserving smoothness.
+
 ## 🚀 How to Run
 
 ### Prerequisites
@@ -290,6 +299,6 @@ step-mobile/
 
 **Ready for testing!** Run `npm start` and scan the QR code with Expo Go.
 
-**Version:** 1.2.0  
-**Last Updated:** 2025-10-16T11:47:56.000Z  
-**Status:** Phase 1-6 Complete + Phase 2.5 Foundation + Camera Overhaul - Production Ready
+**Version:** 1.3.0  
+**Last Updated:** 2025-10-18T07:49:20.000Z  
+**Status:** Phase 1-6 Complete + Phase 2.5 Foundation + Camera Overhaul + Documentation Consolidation - Production Ready

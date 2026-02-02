@@ -14,7 +14,10 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.blockmass.stepmobile"
+      "bundleIdentifier": "com.blockmass.stepmobile",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -27,6 +30,20 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "cce632ed-2d41-447e-b7c7-066f13a81a65"
+      }
+    },
+    "plugins": [
+      "expo-asset"
+    ],
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/cce632ed-2d41-447e-b7c7-066f13a81a65"
     }
   }
 }

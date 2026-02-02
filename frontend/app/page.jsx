@@ -6,10 +6,18 @@ import { useState } from "react";
 const USE_CASES = [
   {
     id: "mesh-mining-3d",
-    title: "⛏️  STEP Mesh Mining",
+    title: "⛏️  STEP Virtual Mining (Desktop)",
     description:
-      "Interactive 3D mining game. Start with icosahedron on Earth sphere, click triangles to mine them (0-11 clicks), subdivide into 4 children. Real production game!",
+      "Interactive 3D mining game. Start with icosahedron on Earth sphere, click triangles to mine them (0-11 clicks), subdivide into 4 children. 3-second cooldown per triangle.",
     path: "/mesh-mining-3d",
+    featured: true,
+  },
+  {
+    id: "mine-mobile",
+    title: "📱 Mobile Location Mining",
+    description:
+      "Mine real locations using your mobile device's GPS. Submit location proofs to earn STEP tokens.",
+    path: "/mine-mobile",
     featured: true,
   },
   {
@@ -128,6 +136,9 @@ export default function Home() {
         <div style={{ fontSize: 14, opacity: 0.7 }}>
           <Link href="/admin/health" style={{ color: "#000", marginRight: 16 }}>
             Admin Dashboard
+          </Link>
+          <Link href="/mesh" style={{ color: "#000", marginRight: 16 }}>
+            Mesh Explorer
           </Link>
           <Link href="/dev" style={{ color: "#000" }}>
             Dev Tools

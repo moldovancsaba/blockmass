@@ -2,6 +2,12 @@
 
 **Last Updated**: 2025-10-07T11:24:00.000Z
 
+## Update — 2025-10-18T12:00:00.000Z
+- Switched to merged BufferGeometry rendering for visible triangles (single draw call).
+- Enforced backface + frustum culling after rotation; adaptive relaxation when too close to surface.
+- Screen-space LOD: triangles with <100px edge length collapse to parent, using deepest child’s color for fidelity.
+- Camera: dynamic FOV with minimum altitude ~64 km to prevent disappearance; mesh rebuilds are debounced until gesture end for smooth 60fps.
+
 ## ✅ Completed Features
 
 ### 1. Spherical Icosahedron Mesh System

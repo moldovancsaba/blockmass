@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { io } from "socket.io-client";
+import Link from "next/link";
 
 function nowIsoMs() {
   return new Date().toISOString();
@@ -14,6 +15,8 @@ export default function DevCapture() {
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
   const [items, setItems] = useState([]);
+  const [meshStatus, setMeshStatus] = useState(null);
+  const [seedingResult, setSedingResult] = useState(null);
   const socketRef = useRef(null);
 
   useEffect(() => {
@@ -26,6 +29,12 @@ export default function DevCapture() {
       .then((r) => r.json())
       .then((j) => setItems(j.items || []))
       .catch(() => {});
+
+    // Check mesh status
+    fetch("/api/mesh/search?bbox=-180,-90,180,90&level=1&maxResults=1")
+      .then((r) => r.json())
+      .then((j) => setMeshStatus({ count: j.result?.count || 0 }))
+      .catch(() => setMeshStatus({ count: 0 }));
 
     return () => {
       s.close();
@@ -43,6 +52,22 @@ export default function DevCapture() {
     const j = await r.json();
     setNonce(j.nonce);
     setExpiresAt(j.expiresAt);
+  }
+
+  async function seedMesh() {
+    setError(null);
+    setSedingResult(null);
+    setBusy(true);
+    try {
+      const r = await fetch("/api/mesh/seed", { method: "POST" });
+      const j = await r.json();
+      setSedingResult(j);
+      setMeshStatus({ count: j.count || 0 });
+    } catch (e) {
+      setError(String(e?.message || e));
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function recordEvent() {
@@ -92,7 +117,32 @@ export default function DevCapture() {
 
   return (
     <main style={{ maxWidth: 720, margin: "40px auto", padding: "0 20px" }}>
-      <h1>Dev Capture</h1>
+      <h1>Dev Tools</h1>
+      
+      {/* Navigation */}
+      <div style={{ marginBottom: 20, padding: 10, background: '#f0f0f0', borderRadius: 8 }}>
+        <Link href="/" style={{ marginRight: 15 }}>← Home</Link>
+        <Link href="/mesh-mining-3d" style={{ marginRight: 15 }}>3D Mining</Link>
+        <Link href="/mine-mobile">Mobile Mining</Link>
+      </div>
+
+      <h2>Mesh Seeding</h2>
+      <div style={{ marginBottom: 12 }}>
+        <p>Status: {meshStatus?.count > 0 ? `✅ ${meshStatus.count} triangles seeded` : '❌ Not seeded'}</p>
+        <button onClick={seedMesh} disabled={busy} style={{ padding: 10, marginRight: 10, background: '#0066ff', color: 'white', border: 'none', borderRadius: 4 }}>
+          Seed Icosahedron (20 triangles)
+        </button>
+      </div>
+      {seedingResult && (
+        <div style={{ marginBottom: 12, padding: 10, background: seedingResult.ok ? '#e0ffe0' : '#ffe0e0', borderRadius: 4 }}>
+          <div>{seedingResult.message}</div>
+          <div>Triangles: {seedingResult.count}</div>
+        </div>
+      )}
+      
+      <hr style={{ margin: '20px 0' }} />
+
+      <h2>Event Capture</h2>
       <div style={{ marginBottom: 12 }}>
         <button onClick={getNonce} disabled={busy} style={{ padding: 10, marginRight: 10 }}>Get nonce</button>
         <button onClick={recordEvent} disabled={busy || !nonce} style={{ padding: 10 }}>Record event</button>
