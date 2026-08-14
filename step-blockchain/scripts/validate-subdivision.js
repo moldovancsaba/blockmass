@@ -24,7 +24,7 @@ secp.etc.hmacSha256Sync = (key, ...msgs) => {
 
 // Configuration
 const API_URL = 'http://localhost:3002';
-const MONGODB_URI = 'REDACTED_ROTATED_2026-08-14';
+const MONGODB_URI = 'REDACTED_ROTATE_ME_2026-08-14';
 
 // Test triangle configuration
 const TEST_TRIANGLE_ID = 'STEP-TRI-v1:A10-00000000000000000000-UPB'; // Proper checksum
