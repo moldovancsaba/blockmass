@@ -230,7 +230,7 @@ These tests verify:
 
 **Connection String:**
 ```
-REDACTED_ROTATED_2026-08-14
+REDACTED_ROTATE_ME_2026-08-14
 ```
 
 **Database:** `step`
