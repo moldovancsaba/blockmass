@@ -3,7 +3,7 @@
 # STEP Blockchain Server Start Script
 # Loads environment variables and starts the server
 
-export MONGODB_URI='REDACTED_ROTATED_2026-08-14'
+export MONGODB_URI='REDACTED_ROTATE_ME_2026-08-14'
 export PORT=3002
 export NODE_ENV=development
 export GPS_MAX_ACCURACY_M=50
