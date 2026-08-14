@@ -149,7 +149,7 @@ This will:
 
 **Connection String:**
 ```
-REDACTED_ROTATED_2026-08-14
+REDACTED_ROTATE_ME_2026-08-14
 ```
 
 **Database:** `step`
@@ -168,7 +168,7 @@ https://cloud.mongodb.com
 
 ### Backend (.env in step-blockchain/)
 ```bash
-MONGODB_URI=REDACTED_ROTATED_2026-08-14
+MONGODB_URI=REDACTED_ROTATE_ME_2026-08-14
 PORT=3002
 NODE_ENV=development
 GPS_MAX_ACCURACY_M=50
